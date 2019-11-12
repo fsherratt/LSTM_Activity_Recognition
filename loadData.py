@@ -42,12 +42,30 @@ if __name__ == "__main__":
     FEATURES = 6
     ACTIVITIES = 12
 
-    test_data_path = 'H:\\dos\\PhD\\tensorflow\\LSTM_Activity_Recognition\\UCI_HAD\\Transform_Data\\data_exp001.csv'
-    y, x = loadDataFile(test_data_path, timesteps=TIMESTEPS, num_activities=ACTIVITIES)
+    dataDir = 'H:\\dos\\PhD\\tensorflow\\LSTM_Activity_Recognition\\UCI_HAD\\Transform_Data'
+
+    files = os.listdir(dataDir)
+    dataFiles = []
+
+    for file in files:
+        file = os.path.join(dataDir, file)
+        if os.path.isfile(file) and file.endswith('.csv'):
+            dataFiles.append(file)
+
+    x = []
+    y = []
+
+    for file in dataFiles:
+        print('Loading: {}'.format(file))
+        newY, newX = loadDataFile(file, timesteps=TIMESTEPS, num_activities=ACTIVITIES)
+        x.extend(newX)
+        y.extend(newY)
 
     # Normalise data
 
-    samples_available = len(y) 
+    # Even out number for each activity
+
+    samples_available = len(x) 
 
     x = np.asarray(x) # Samples, Timesteps, Feature
     y = np.asarray(y)
@@ -60,6 +78,7 @@ if __name__ == "__main__":
     x_train, y_train = x.take(perms[0:train_test_split], axis=0), y.take(perms[0:train_test_split], axis=0)
     x_test,  y_test  = x.take(perms[train_test_split:],  axis=0), y.take(perms[train_test_split:],  axis=0)
 
+    # Dataset API for prefetch
 
 
     # Build Model
@@ -102,7 +121,7 @@ if __name__ == "__main__":
 
     # Train Model
     EPOCHS = 1000
-    BATCH_SIZE = 1000
+    BATCH_SIZE = 20000
     model.fit(x_train, y_train, batch_size=BATCH_SIZE, epochs=EPOCHS, 
               validation_data=(x_test, y_test), validation_steps=1,
               callbacks=cb_list)
@@ -110,4 +129,5 @@ if __name__ == "__main__":
 
 
     # Save Model
+    # if keyboardInterrupt option to save?
     model.save_weights(checkpoint_path.format(epoch=EPOCHS)) 
