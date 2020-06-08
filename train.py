@@ -13,6 +13,17 @@ import tensorflow as tf
 import yaml
 
 
+def hardware_setup(use_gpu: True):
+    if use_gpu:
+        try:
+            physical_devices = tf.config.experimental.list_physical_devices("GPU")
+            tf.config.experimental.set_memory_growth(physical_devices[0], True)
+        except RuntimeError as e:
+            print(e)
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+
 def parse_cli():
     parser = argparse.ArgumentParser(description="Startup module(s)")
     parser.add_argument(
@@ -184,11 +195,8 @@ if __name__ == "__main__":
     args = parse_cli()
 
     # Setup physical devices
-    try:
-        physical_devices = tf.config.experimental.list_physical_devices("GPU")
-        tf.config.experimental.set_memory_growth(physical_devices[0], True)
-    except RuntimeError as e:
-        print(e)
+    # TODO: parameterise constants
+    hardware_setup(use_gpu=True)
 
     # Load configuration files
     conf = load_config(config_file=args.config_file)
