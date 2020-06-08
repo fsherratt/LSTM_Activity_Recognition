@@ -98,7 +98,7 @@ def load_data(data_files: list):
     for file in data_files:
         print("Opening {}".format(file))
         new_x, new_y = parse_file(
-            file, label_heading="activity", num_timesteps=128, num_labels=12
+            file, label_heading="activity", num_timesteps=128, num_labels=12, skip=5
         )
         x.extend(new_x)
         y.extend(new_y)
@@ -109,30 +109,29 @@ def load_data(data_files: list):
     return x, y
 
 
-# TODO: improve this function block it's disgusting
-def parse_file(filename, label_heading, num_timesteps, num_labels):
-    num_samples = None
-
+def parse_file(filename, label_heading, num_timesteps, num_labels, skip):
+    # Read csv file
     data = pd.read_csv(filename)
-    label = data.pop(label_heading)
 
+    # Apply one_hot to labels
+    label = data.pop(label_heading)
     label = tf.compat.v2.one_hot(label, num_labels)
     label = np.asarray(label)
 
-    num_elements = data.shape[0]
-
-    max_start_index = num_elements - num_timesteps
-
-    if num_samples is None or num_samples > max_start_index:
-        num_samples = max_start_index
-
+    # Divide data up into timestep chunks - offset by skip steps
     data_frames = []
     label_frames = []
 
-    for i in range(num_samples):
+    i = 0
+    max_start_index = data.shape[0] - num_timesteps
+
+    while i < max_start_index:
         sample_end = i + num_timesteps
+
         data_frames.append(data.values[i:sample_end, :])
         label_frames.append(label[sample_end])
+
+        i += skip
 
     return data_frames, label_frames
 
