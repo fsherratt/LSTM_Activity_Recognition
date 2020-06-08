@@ -53,9 +53,9 @@ disp '-- Data Loaded --'
 %% Convert to output vector
 disp '-- Processing Labels --'
 
-labels = cell(1, length(data));
+labels = cell(1, length(data_acc));
 
-for i = 1:length(data)
+for i = 1:length(data_acc)
     fprintf('Processing label exp: %03d\n', i);
     
     tmp_experiment_rows = label_exp_start_row(i):label_exp_end_row(i);
@@ -64,7 +64,7 @@ for i = 1:length(data)
     tmp_start = label_start(tmp_experiment_rows);
     tmp_end = label_end(tmp_experiment_rows);
     
-    tmp_labels = zeros(length(data{i}), 1);
+    tmp_labels = zeros(length(data_acc{i}), 1);
     
     for j = 1:length(tmp_activity)
         tmp_elements = tmp_start(j):tmp_end(j);
@@ -93,7 +93,7 @@ clear labels data_acc data_gyro;
 %% Save Data
 disp '-- Saving Data --'
 
-data_columns = {'Activity', 'acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z'};
+data_columns = {'activity', 'acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z'};
 
 for i = 1:length(data)
     filename = sprintf('exp%03d.csv', i);

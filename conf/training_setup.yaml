@@ -1,0 +1,21 @@
+training:
+  use_gpu: True
+  max_epochs: 1000
+  batch_size: 50000
+
+compile:
+  loss: "categorical_crossentropy"
+  optimizer: "adam"
+  metrics:
+    - "categorical_accuracy"
+
+model:
+  config_file: "conf/model.yaml"
+
+data:
+  folder: "UCI_HAD/Transform_Data"
+  activites: 12
+  features: 6
+
+callbacks:
+  save_epochs: 1

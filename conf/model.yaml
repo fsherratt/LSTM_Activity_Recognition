@@ -1,0 +1,32 @@
+definitions:
+  - &LSTM-args
+    units: 128
+    return_sequences: true
+    unroll: false
+
+layers:
+  - type: lstm
+    args: *LSTM-args
+
+  - type: lstm
+    args: *LSTM-args
+
+  - type: lstm
+    args: *LSTM-args
+
+  - type: lstm
+    args:
+      <<: *LSTM-args
+      return_sequences: false
+
+  - type: dropout
+    args:
+      rate: 0.2
+
+  - type: dense
+    args:
+      units: 12 # This needs to match activities
+
+  - type: activation
+    args:
+      activation: "softmax"

@@ -122,3 +122,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+.vscode/
+
+logs/
+
+training/
+UCI_HAD/
