@@ -62,6 +62,7 @@ def fit_model(
     callbacks: None,
     settings=None,
 ):
+    # TODO: parameterise constants
     defaults = {"batch_size": 2000, "epochs": 1000, "validation_steps": 1}
     if settings is None:
         settings = defaults
@@ -97,6 +98,7 @@ def load_data(data_files: list):
 
     for file in data_files:
         print("Opening {}".format(file))
+        # TODO: parameterise constants
         new_x, new_y = parse_file(
             file, label_heading="activity", num_timesteps=128, num_labels=12, skip=5
         )
@@ -156,16 +158,19 @@ def split_test_train(data, labels, split=0.7):
 
 
 def tensorboard_callback():
+    # TODO: parameterise constants
     log_dir = "logs\\scalars\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     return tf.keras.callbacks.TensorBoard(log_dir=log_dir)
 
 
 def early_stopping_callback():
+    # TODO: parameterise constants
     settings = {"monitor": "val_loss", "verbose": 1, "patience": 3}
     return tf.keras.callbacks.EarlyStopping(**settings)
 
 
 def save_model_callback():
+    # TODO: parameterise constants
     settings = {
         "filepath": "training\\cp-{epoch:04d}.ckpt",
         "verbose": 1,
