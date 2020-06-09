@@ -182,7 +182,7 @@ def save_copy_config(file_dir: str, config_file: str):
     if not os.path.exists(file_dir):
         os.mkdir(file_dir)
 
-    fire_dir = file_dir / config_file.name
+    file_dir = file_dir / config_file.name
     shutil.copy2(config_file.absolute(), file_dir.absolute())
 
 
@@ -211,6 +211,9 @@ if __name__ == "__main__":
         raw_data, label_data, split=conf["data"]["test_train_split"]
     )
 
+    # test_data = None
+    # train_data = (raw_data, label_data)
+
     # Set up ML model
     input_shape = train_data[0].shape[-2:]
     model = create_model(
@@ -237,10 +240,10 @@ if __name__ == "__main__":
         )
 
     model_save_dir = pathlib.Path(conf["save"]["model_dir"] + "/" + start_time + "/")
-    if conf["callbacks"]["use_save_mode"]:
+    if conf["callbacks"]["use_save_model"]:
         callback_list.append(
             save_model_callback(
-                settings=conf["callbacks"]["save_mode"], save_path=model_save_dir
+                settings=conf["callbacks"]["save_model"], save_path=model_save_dir
             )
         )
 

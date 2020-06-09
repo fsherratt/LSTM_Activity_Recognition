@@ -32,7 +32,7 @@ callbacks:
     patience: 3
 
   use_save_mode: true
-  save_mode:
+  save_model:
     verbose: 1
     save_weights_only: false
     period: 20
@@ -40,7 +40,7 @@ callbacks:
 fit:
   batch_size: 2000
   epochs: 1000
-  validation_steps: 1
+  shuffle: true
 
 save:
   tensorboard_dir: "logs/scalars/"
