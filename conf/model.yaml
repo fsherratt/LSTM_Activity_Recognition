@@ -1,23 +1,35 @@
 definitions:
   - &LSTM-args
-    units: 128
+    units: 6
     return_sequences: true
     unroll: false
+    stateful: false
 
 layers:
   - type: lstm
-    args: *LSTM-args
-
-  - type: lstm
-    args: *LSTM-args
-
-  - type: lstm
-    args: *LSTM-args
+    args:
+      <<: *LSTM-args
+      units: 64
 
   - type: lstm
     args:
       <<: *LSTM-args
-      return_sequences: false
+      units: 32
+
+  - type: lstm
+    args:
+      <<: *LSTM-args
+      units: 24
+
+  - type: lstm
+    args:
+      <<: *LSTM-args
+      units: 6
+
+  - type: reshape
+    args:
+      target_shape:
+        - 768
 
   - type: dropout
     args:

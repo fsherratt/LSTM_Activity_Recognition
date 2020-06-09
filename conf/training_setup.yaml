@@ -1,7 +1,18 @@
-training:
+hardware_setup:
   use_gpu: True
-  max_epochs: 1000
-  batch_size: 50000
+
+data:
+  folder: "UCI_HAD/Transform_Data"
+  test_train_split: 0.7
+
+  data_settings:
+    num_timesteps: 128
+    label_heading: "activity"
+    num_labels: 12
+    skip: 5
+
+model:
+  config_file: "conf/model.yaml"
 
 compile:
   loss: "categorical_crossentropy"
@@ -9,13 +20,29 @@ compile:
   metrics:
     - "categorical_accuracy"
 
-model:
-  config_file: "conf/model.yaml"
-
-data:
-  folder: "UCI_HAD/Transform_Data"
-  activites: 12
-  features: 6
-
 callbacks:
-  save_epochs: 1
+  use_tensorboard: true
+  tensorboard:
+    histogram_freq: 1
+
+  use_early_stopping: tr
+  early_stopping:
+    monitor: "val_loss"
+    verbose: 1
+    patience: 3
+
+  use_save_mode: true
+  save_mode:
+    verbose: 1
+    save_weights_only: false
+    period: 20
+
+fit:
+  batch_size: 2000
+  epochs: 1000
+  validation_steps: 1
+
+save:
+  tensorboard_dir: "logs/scalars/"
+  model_dir: "logs/model/"
+  history_dir: "logs/history/"

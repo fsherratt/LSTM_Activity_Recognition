@@ -46,6 +46,7 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
         "dense": tf.keras.layers.Dense,
         "activation": tf.keras.layers.Activation,
         "dropout": tf.keras.layers.Dropout,
+        "reshape": tf.keras.layers.Reshape,
     }
 
     # Add input definition to first layer
@@ -73,14 +74,7 @@ def fit_model(
     callbacks: None,
     settings=None,
 ):
-    # TODO: parameterise constants
-    defaults = {"batch_size": 2000, "epochs": 1000, "validation_steps": 1}
-    if settings is None:
-        settings = defaults
-    else:
-        settings = {**defaults, **settings}
-
-    tf_model.fit(
+    history = tf_model.fit(
         x=training_data[0],
         y=training_data[1],
         validation_data=validation_data,
@@ -88,13 +82,14 @@ def fit_model(
         **settings
     )
 
+    return history
+
 
 def get_file_list(data_directory: str) -> list:
     data_directory = pathlib.Path(data_directory)
     files = os.listdir(data_directory)
     data_files = []
 
-    # Use every other file - leave one blind sample for each user
     for file in files:
         file = data_directory / file
         if file.exists() and file.suffix == ".csv":
@@ -103,16 +98,14 @@ def get_file_list(data_directory: str) -> list:
     return data_files
 
 
-def load_data(data_files: list):
+def load_data(data_files: list, settings: dict):
     x = []
     y = []
 
     for file in data_files:
         print("Opening {}".format(file))
         # TODO: parameterise constants
-        new_x, new_y = parse_file(
-            file, label_heading="activity", num_timesteps=128, num_labels=12, skip=5
-        )
+        new_x, new_y = parse_file(file, **settings)
         x.extend(new_x)
         y.extend(new_y)
 
@@ -149,7 +142,7 @@ def parse_file(filename, label_heading, num_timesteps, num_labels, skip):
     return data_frames, label_frames
 
 
-def split_test_train(data, labels, split=0.7):
+def split_test_train(data, labels, split):
     samples_available = len(labels)
     train_test_split = int(split * samples_available)
 
@@ -168,61 +161,82 @@ def split_test_train(data, labels, split=0.7):
     return test, train
 
 
-def tensorboard_callback():
-    # TODO: parameterise constants
-    log_dir = "logs\\scalars\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    return tf.keras.callbacks.TensorBoard(log_dir=log_dir)
+def tensorboard_callback(settings, save_dir):
+    return tf.keras.callbacks.TensorBoard(log_dir=save_dir, **settings)
 
 
-def early_stopping_callback():
-    # TODO: parameterise constants
-    settings = {"monitor": "val_loss", "verbose": 1, "patience": 3}
+def early_stopping_callback(settings):
     return tf.keras.callbacks.EarlyStopping(**settings)
 
 
-def save_model_callback():
-    # TODO: parameterise constants
-    settings = {
-        "filepath": "training\\cp-{epoch:04d}.ckpt",
-        "verbose": 1,
-        "save_weights_only": False,
-        "period": 1,
-    }
-    return tf.keras.callbacks.ModelCheckpoint(**settings)
+def save_model_callback(settings, save_path):
+    save_path = save_path / "cp-{epoch:04d}.ckpt"
+    return tf.keras.callbacks.ModelCheckpoint(filepath=save_path.__str__(), **settings)
 
 
 if __name__ == "__main__":
     args = parse_cli()
 
-    # Setup physical devices
-    # TODO: parameterise constants
-    hardware_setup(use_gpu=True)
+    start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     # Load configuration files
     conf = load_config(config_file=args.config_file)
     model_conf = load_config(config_file=conf["model"]["config_file"])
 
+    # Setup physical devices
+    hardware_setup(use_gpu=conf["hardware_setup"]["use_gpu"])
+
     # Import and process data
     data_files = get_file_list(conf["data"]["folder"])
-    raw_data, label_data = load_data(data_files)
+    raw_data, label_data = load_data(data_files, conf["data"]["data_settings"])
 
-    test_data, train_data = split_test_train(raw_data, label_data, split=0.7)
+    test_data, train_data = split_test_train(
+        raw_data, label_data, split=conf["data"]["test_train_split"]
+    )
 
     # Set up ML model
-    data_shape = train_data[0].shape[-2:]
-    model = create_model(layer_definitions=model_conf["layers"], input_shape=data_shape)
+    input_shape = train_data[0].shape[-2:]
+    model = create_model(
+        layer_definitions=model_conf["layers"], input_shape=input_shape
+    )
     model = compile_model(settings=conf["compile"], tf_model=model)
 
     # Setup callbacks
     callback_list = []
 
-    callback_list.append(tensorboard_callback())
-    callback_list.append(early_stopping_callback())
-    callback_list.append(save_model_callback())
+    if conf["callbacks"]["use_tensorboard"]:
+        tensorboard_dir = pathlib.Path(
+            conf["save"]["tensorboard_dir"] + "/" + start_time
+        )
+        callback_list.append(
+            tensorboard_callback(
+                settings=conf["callbacks"]["tensorboard"], save_dir=tensorboard_dir
+            )
+        )
+
+    if conf["callbacks"]["use_early_stopping"]:
+        callback_list.append(
+            early_stopping_callback(settings=conf["callbacks"]["early_stopping"])
+        )
+
+    model_save_dir = pathlib.Path(conf["save"]["model_dir"] + "/" + start_time + "/")
+    if conf["callbacks"]["use_save_mode"]:
+        callback_list.append(
+            save_model_callback(
+                settings=conf["callbacks"]["save_mode"], save_path=model_save_dir
+            )
+        )
 
     # Run training/learning algorithim
-    fit_model(model, train_data, test_data, callback_list)
+    history = fit_model(model, train_data, test_data, callback_list, conf["fit"])
 
-    # Save model and model properties
-    foldername = "test"
-    model.save(foldername)
+    # Save final model and model properties
+    model.save(model_save_dir.__str__())
+
+    # Save model history
+    history_save_dir = pathlib.Path(
+        conf["save"]["history_dir"] + "/" + start_time + ".csv"
+    )
+    pd.DataFrame.from_dict(history.history).to_csv(
+        history_save_dir.__str__(), index=False
+    )
