@@ -5,6 +5,7 @@ import argparse
 import datetime
 import os
 import pathlib
+import shutil
 
 import numpy as np
 import omegaconf
@@ -174,6 +175,17 @@ def save_model_callback(settings, save_path):
     return tf.keras.callbacks.ModelCheckpoint(filepath=save_path.__str__(), **settings)
 
 
+def save_copy_config(file_dir: str, config_file: str):
+    config_file = pathlib.Path(config_file)
+    file_dir = pathlib.Path(file_dir)
+
+    if not os.path.exists(file_dir):
+        os.mkdir(file_dir)
+
+    fire_dir = file_dir / config_file.name
+    shutil.copy2(config_file.absolute(), file_dir.absolute())
+
+
 if __name__ == "__main__":
     args = parse_cli()
 
@@ -182,6 +194,11 @@ if __name__ == "__main__":
     # Load configuration files
     conf = load_config(config_file=args.config_file)
     model_conf = load_config(config_file=conf["model"]["config_file"])
+
+    save_copy_config(conf["save"]["config_dir"] + start_time, args.config_file)
+    save_copy_config(
+        conf["save"]["config_dir"] + start_time, conf["model"]["config_file"]
+    )
 
     # Setup physical devices
     hardware_setup(use_gpu=conf["hardware_setup"]["use_gpu"])
