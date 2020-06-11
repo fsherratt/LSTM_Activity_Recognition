@@ -2,20 +2,38 @@ hardware_setup:
   use_gpu: True
 
 data:
-  folder: "UCI_HAD/Transform_Data"
+  folder: "Data"
   test_train_split: 0.7
 
   data_settings:
     num_timesteps: 128
     label_heading: "activity"
-    num_labels: 12
-    skip: 5
+    data_headings:
+      - "r_ankle_accel_x"
+      - "r_ankle_accel_y"
+      - "r_ankle_accel_z"
+      - "r_ankle_gyro_x"
+      - "r_ankle_gyro_y"
+      - "r_ankle_gyro_z"
+      # - "l_ankle_accel_x"
+      # - "l_ankle_accel_y"
+      # - "l_ankle_accel_z"
+      # - "l_ankle_gyro_x"
+      # - "l_ankle_gyro_y"
+      # - "l_ankle_gyro_z"
+
+    num_labels: 5
+    skip: 1
 
 model:
   config_file: "conf/model.yaml"
 
+loss_func:
+  type: "categorical_crossentropy"
+  settings:
+    from_logits: true
+
 compile:
-  loss: "categorical_crossentropy"
   optimizer: "adam"
   metrics:
     - "categorical_accuracy"
@@ -25,17 +43,17 @@ callbacks:
   tensorboard:
     histogram_freq: 1
 
-  use_early_stopping: tr
+  use_early_stopping: true
   early_stopping:
     monitor: "val_loss"
     verbose: 1
-    patience: 3
+    patience: 5
 
-  use_save_mode: true
+  use_save_model: true
   save_model:
     verbose: 1
-    save_weights_only: false
-    period: 20
+    save_weights_only: true
+    period: 5
 
 fit:
   batch_size: 2000
@@ -43,6 +61,7 @@ fit:
   shuffle: true
 
 save:
+  config_dir: "logs/conf/"
   tensorboard_dir: "logs/scalars/"
   model_dir: "logs/model/"
   history_dir: "logs/history/"

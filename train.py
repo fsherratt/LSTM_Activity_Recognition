@@ -33,7 +33,7 @@ def parse_cli():
     return parser.parse_known_args()[0]
 
 
-def load_config(config_file) -> omegaconf.dictconfig.DictConfig:
+def load_config(config_file) -> dict:
     with open(config_file) as file:
         config = yaml.full_load(file)
 
@@ -61,8 +61,15 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
     return tf_model
 
 
-def compile_model(settings: dict, tf_model: tf.keras.Sequential) -> tf.keras.Sequential:
-    tf_model.compile(**settings)
+def loss_function(type, settings) -> tf.keras.losses.Loss:
+    loss_funcs = {"categorical_crossentropy": tf.keras.losses.CategoricalCrossentropy}
+    return loss_funcs[type](**settings)
+
+
+def compile_model(
+    tf_model: tf.keras.Sequential, settings: dict, loss_func: tf.keras.losses.Loss
+) -> tf.keras.Sequential:
+    tf_model.compile(loss=loss_func, **settings)
     tf_model.summary()
 
     return tf_model
@@ -99,7 +106,7 @@ def get_file_list(data_directory: str) -> list:
     return data_files
 
 
-def load_data(data_files: list, settings: dict):
+def load_data(data_files: list, settings: dict, append=False):
     x = []
     y = []
 
@@ -107,16 +114,17 @@ def load_data(data_files: list, settings: dict):
         print("Opening {}".format(file))
         # TODO: parameterise constants
         new_x, new_y = parse_file(file, **settings)
-        x.extend(new_x)
-        y.extend(new_y)
-
-    x = np.asarray(x)
-    y = np.asarray(y)
+        if append:
+            x.append(new_x)
+            y.append(new_y)
+        else:
+            x.extend(new_x)
+            y.append(new_y)
 
     return x, y
 
 
-def parse_file(filename, label_heading, num_timesteps, num_labels, skip):
+def parse_file(filename, label_heading, data_headings, num_timesteps, num_labels, skip):
     # Read csv file
     data = pd.read_csv(filename)
 
@@ -124,6 +132,8 @@ def parse_file(filename, label_heading, num_timesteps, num_labels, skip):
     label = data.pop(label_heading)
     label = tf.compat.v2.one_hot(label, num_labels)
     label = np.asarray(label)
+
+    data = data[data_headings]
 
     # Divide data up into timestep chunks - offset by skip steps
     data_frames = []
@@ -138,12 +148,15 @@ def parse_file(filename, label_heading, num_timesteps, num_labels, skip):
         data_frames.append(data.values[i:sample_end, :])
         label_frames.append(label[sample_end])
 
-        i += skip
+        i += skip + 1
 
     return data_frames, label_frames
 
 
 def split_test_train(data, labels, split):
+    data = np.asarray(data)
+    labels = np.asarray(labels)
+
     samples_available = len(labels)
     train_test_split = int(split * samples_available)
 
@@ -211,15 +224,14 @@ if __name__ == "__main__":
         raw_data, label_data, split=conf["data"]["test_train_split"]
     )
 
-    # test_data = None
-    # train_data = (raw_data, label_data)
-
     # Set up ML model
     input_shape = train_data[0].shape[-2:]
     model = create_model(
         layer_definitions=model_conf["layers"], input_shape=input_shape
     )
-    model = compile_model(settings=conf["compile"], tf_model=model)
+    loss_func = loss_function(conf["loss_func"]["type"], conf["loss_func"]["settings"])
+    model = compile_model(tf_model=model, loss_func=loss_func, settings=conf["compile"])
+    model_save_dir = pathlib.Path(conf["save"]["model_dir"] + "/" + start_time + "/")
 
     # Setup callbacks
     callback_list = []
@@ -239,7 +251,6 @@ if __name__ == "__main__":
             early_stopping_callback(settings=conf["callbacks"]["early_stopping"])
         )
 
-    model_save_dir = pathlib.Path(conf["save"]["model_dir"] + "/" + start_time + "/")
     if conf["callbacks"]["use_save_model"]:
         callback_list.append(
             save_model_callback(

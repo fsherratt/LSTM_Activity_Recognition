@@ -37,8 +37,8 @@ layers:
 
   - type: dense
     args:
-      units: 12 # This needs to match activities
+      units: 5 # This needs to match activities
 
   - type: activation
     args:
-      activation: "softmax"
+      activation: "relu"
