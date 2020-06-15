@@ -1,9 +1,12 @@
 hardware_setup:
-  use_gpu: True
+  use_gpu: true
+  random_seed: 0
 
 data:
   folder: "Data"
   test_train_split: 0.7
+
+  percentage_train: 0.01
 
   data_settings:
     num_timesteps: 128

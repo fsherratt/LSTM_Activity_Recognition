@@ -14,7 +14,9 @@ import tensorflow as tf
 import yaml
 
 
-def hardware_setup(use_gpu: True):
+def hardware_setup(use_gpu: True, random_seed: 0):
+    np.random.seed(random_seed)
+
     if use_gpu:
         try:
             physical_devices = tf.config.experimental.list_physical_devices("GPU")
@@ -30,7 +32,7 @@ def parse_cli():
     parser.add_argument(
         "-c", "-C", "--config-file", type=str, default=None, help="Config file path",
     )
-    return parser.parse_known_args()[0]
+    return parser.parse_args()
 
 
 def load_config(config_file) -> dict:
@@ -119,7 +121,7 @@ def load_data(data_files: list, settings: dict, append=False):
             y.append(new_y)
         else:
             x.extend(new_x)
-            y.append(new_y)
+            y.extend(new_y)
 
     return x, y
 
@@ -153,19 +155,21 @@ def parse_file(filename, label_heading, data_headings, num_timesteps, num_labels
     return data_frames, label_frames
 
 
-def split_test_train(data, labels, split):
+def split_test_train(data, labels, split, percent_train=1.0):
     data = np.asarray(data)
     labels = np.asarray(labels)
 
     samples_available = len(labels)
     train_test_split = int(split * samples_available)
 
-    np.random.seed(0)
     perms = np.random.permutation(data.shape[0])
 
+    train_perms = np.random.permutation(int(train_test_split * percent_train))
+    train_perms = perms[train_perms]
+
     train = (
-        data.take(perms[0:train_test_split], axis=0),
-        labels.take(perms[0:train_test_split], axis=0),
+        data.take(perms[train_perms], axis=0),
+        labels.take(perms[train_perms], axis=0),
     )
     test = (
         data.take(perms[train_test_split:], axis=0),
@@ -208,20 +212,29 @@ if __name__ == "__main__":
     conf = load_config(config_file=args.config_file)
     model_conf = load_config(config_file=conf["model"]["config_file"])
 
+    print("------------------------------")
+    print("Timestamp: {}".format(start_time))
+    print("Random Seed: {}".format(conf["hardware_setup"]["random_seed"]))
+    print("Training Data Used: {:.2f}%".format(conf["data"]["percentage_train"] * 100))
+    print("------------------------------")
+
     save_copy_config(conf["save"]["config_dir"] + start_time, args.config_file)
     save_copy_config(
         conf["save"]["config_dir"] + start_time, conf["model"]["config_file"]
     )
 
     # Setup physical devices
-    hardware_setup(use_gpu=conf["hardware_setup"]["use_gpu"])
+    hardware_setup(**conf["hardware_setup"])
 
     # Import and process data
     data_files = get_file_list(conf["data"]["folder"])
     raw_data, label_data = load_data(data_files, conf["data"]["data_settings"])
 
     test_data, train_data = split_test_train(
-        raw_data, label_data, split=conf["data"]["test_train_split"]
+        raw_data,
+        label_data,
+        split=conf["data"]["test_train_split"],
+        percent_train=conf["data"]["percentage_train"],
     )
 
     # Set up ML model
@@ -262,7 +275,7 @@ if __name__ == "__main__":
     history = fit_model(model, train_data, test_data, callback_list, conf["fit"])
 
     # Save final model and model properties
-    model.save(model_save_dir.__str__())
+    # model.save(model_save_dir.__str__())
 
     # Save model history
     history_save_dir = pathlib.Path(

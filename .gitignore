@@ -128,4 +128,4 @@ dmypy.json
 logs/
 
 training/
-UCI_HAD/
+result/
