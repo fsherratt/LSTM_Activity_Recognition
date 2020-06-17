@@ -6,6 +6,7 @@ import datetime
 import os
 import pathlib
 import shutil
+import sys
 
 import numpy as np
 import omegaconf
@@ -31,6 +32,13 @@ def parse_cli():
     parser = argparse.ArgumentParser(description="Startup module(s)")
     parser.add_argument(
         "-c", "-C", "--config-file", type=str, default=None, help="Config file path",
+    )
+    parser.add_argument("--seed", type=int, default=None, help="Random seed")
+    parser.add_argument(
+        "--percent-traning-data",
+        type=float,
+        default=None,
+        help="Percentage Training Data",
     )
     return parser.parse_args()
 
@@ -212,6 +220,12 @@ if __name__ == "__main__":
     conf = load_config(config_file=args.config_file)
     model_conf = load_config(config_file=conf["model"]["config_file"])
 
+    if args.seed:
+        conf["hardware_setup"]["random_seed"] = args.seed
+
+    if args.percent_traning_data:
+        conf["data"]["percentage_train"] = args.percent_traning_data
+
     print("------------------------------")
     print("Timestamp: {}".format(start_time))
     print("Random Seed: {}".format(conf["hardware_setup"]["random_seed"]))
@@ -275,7 +289,7 @@ if __name__ == "__main__":
     history = fit_model(model, train_data, test_data, callback_list, conf["fit"])
 
     # Save final model and model properties
-    # model.save(model_save_dir.__str__())
+    model.save(model_save_dir.__str__())
 
     # Save model history
     history_save_dir = pathlib.Path(
@@ -284,3 +298,18 @@ if __name__ == "__main__":
     pd.DataFrame.from_dict(history.history).to_csv(
         history_save_dir.__str__(), index=False
     )
+
+    actual_labels = tf.argmax(test_data[1], axis=1)
+    predicted_labels = tf.argmax(model.predict(test_data[0]), axis=1)
+    num_classes = conf["data"]["data_settings"]["num_labels"]
+
+    conf_matrix = tf.math.confusion_matrix(
+        labels=actual_labels, predictions=predicted_labels, num_classes=num_classes
+    )
+
+    print("Confusion matrix")
+    print(conf_matrix)
+
+    print("Accuracy")
+    print(history.history["categorical_accuracy"][-1])
+    print(history.history["val_categorical_accuracy"][-1])

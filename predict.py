@@ -12,13 +12,15 @@ from train import get_file_list, load_data, parse_file, hardware_setup
 
 
 if __name__ == "__main__":
-    hardware_setup(use_gpu=True)
+    hardware_setup(use_gpu=True, random_seed=0)
 
     # Load data file
     data_dir = "C:/Users/Freddie/Documents/PhD/Machine-Learning/Output/1_20200611-101247/Source_Data/"
     data_dir = pathlib.Path(data_dir)
 
     file_list = get_file_list(data_dir)
+    if not file_list:
+        Exception("No files found")
 
     # Todo load this from config file
     settings = {

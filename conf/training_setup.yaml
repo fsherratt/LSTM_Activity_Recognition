@@ -3,10 +3,10 @@ hardware_setup:
   random_seed: 0
 
 data:
-  folder: "Data"
+  folder: "Data_3_state"
   test_train_split: 0.7
 
-  percentage_train: 0.01
+  percentage_train: 1
 
   data_settings:
     num_timesteps: 128
@@ -18,14 +18,47 @@ data:
       - "r_ankle_gyro_x"
       - "r_ankle_gyro_y"
       - "r_ankle_gyro_z"
+      # - "r_ankle_magn_x"
+      # - "r_ankle_magn_y"
+      # - "r_ankle_magnz"
       # - "l_ankle_accel_x"
       # - "l_ankle_accel_y"
       # - "l_ankle_accel_z"
       # - "l_ankle_gyro_x"
       # - "l_ankle_gyro_y"
       # - "l_ankle_gyro_z"
+      # - "l_ankle_magn_x"
+      # - "l_ankle_magn_y"
+      # - "l_ankle_magnz"
+      # - "r_hip_accel_x"
+      # - "r_hip_accel_y"
+      # - "r_hip_accel_z"
+      # - "r_hip_gyro_x"
+      # - "r_hip_gyro_y"
+      # - "r_hip_gyro_z"
+      # - "r_hip_magn_x"
+      # - "r_hip_magn_y"
+      # - "r_hip_magnz"
+      # - "l_hip_accel_x"
+      # - "l_hip_accel_y"
+      # - "l_hip_accel_z"
+      # - "l_hip_gyro_x"
+      # - "l_hip_gyro_y"
+      # - "l_hip_gyro_z"
+      # - "l_hip_magn_x"
+      # - "l_hip_magn_y"
+      # - "l_hip_magnz"
+      # - "chest_accel_x"
+      # - "chest_accel_y"
+      # - "chest_accel_z"
+      # - "chest_gyro_x"
+      # - "chest_gyro_y"
+      # - "chest_gyro_z"
+      # - "chest_magn_x"
+      # - "chest_magn_y"
+      # - "chest_magnz"
 
-    num_labels: 5
+    num_labels: 3
     skip: 1
 
 model:
@@ -59,7 +92,7 @@ callbacks:
     period: 5
 
 fit:
-  batch_size: 2000
+  batch_size: 500
   epochs: 1000
   shuffle: true
 

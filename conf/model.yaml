@@ -37,7 +37,7 @@ layers:
 
   - type: dense
     args:
-      units: 5 # This needs to match activities
+      units: 3 # This needs to match activities
 
   - type: activation
     args:
