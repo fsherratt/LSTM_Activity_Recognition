@@ -1,0 +1,25 @@
+definitions:
+  - &list
+    hparam: ""
+    type: "list"
+    items:
+
+  - &range
+    hparam: ""
+    type: "range"
+    min: 0
+    max: 0
+    interval: 0
+
+hparams:
+  - <<: *range
+    hparam: "HP_LAYER_1_UNITS"
+    min: 60
+    max: 140
+    interval: 10
+
+  - <<: *range
+    hparam: "HP_DROPPOUT_RATE"
+    min: 0.2
+    max: 0.8
+    interval: 0.1

@@ -9,7 +9,7 @@ layers:
   - type: lstm
     args:
       <<: *LSTM-args
-      units: 64
+      units: "@HP_LAYER_1_UNITS"
 
   - type: lstm
     args:
@@ -33,11 +33,11 @@ layers:
 
   - type: dropout
     args:
-      rate: 0.2
+      rate: "@HP_DROPPOUT_RATE"
 
   - type: dense
     args:
-      units: 3 # This needs to match activities
+      units: 4 # This needs to match activities
 
   - type: activation
     args:
