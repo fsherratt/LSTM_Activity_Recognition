@@ -10,6 +10,9 @@ data:
 
   data_settings:
     num_timesteps: 128
+    num_labels: 4
+    skip: 1
+    normalize: false
     label_heading: "activity"
     data_headings:
       - "r_ankle_accel_x"
@@ -58,9 +61,6 @@ data:
       # - "chest_magn_y"
       # - "chest_magnz"
 
-    num_labels: 3
-    skip: 1
-
 model:
   config_file: "conf/model.yaml"
 
@@ -97,6 +97,8 @@ fit:
   shuffle: true
 
 save:
+  final_model: true
+
   config_dir: "logs/conf/"
   tensorboard_dir: "logs/scalars/"
   model_dir: "logs/model/"

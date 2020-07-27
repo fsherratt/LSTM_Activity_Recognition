@@ -120,8 +120,12 @@ def load_data(data_files: list, settings: dict, append=False):
     x = []
     y = []
 
+    i = 1
+    i_max = len(data_files)
+
     for file in data_files:
-        print("Opening {}".format(file))
+        print("{} of {} - Opening {}".format(i, i_max, file))
+        i += 1
         # TODO: parameterise constants
         new_x, new_y = parse_file(file, **settings)
         if append:
@@ -134,7 +138,15 @@ def load_data(data_files: list, settings: dict, append=False):
     return x, y
 
 
-def parse_file(filename, label_heading, data_headings, num_timesteps, num_labels, skip):
+def parse_file(
+    filename,
+    label_heading,
+    data_headings,
+    num_timesteps,
+    num_labels,
+    skip,
+    normalize=True,
+):
     # Read csv file
     data = pd.read_csv(filename)
 
@@ -159,6 +171,10 @@ def parse_file(filename, label_heading, data_headings, num_timesteps, num_labels
         label_frames.append(label[sample_end])
 
         i += skip + 1
+
+    # Normalise for each data window
+    if normalize:
+        data_frames = tf.keras.utils.normalize(data_frames, axis=1, order=2)
 
     return data_frames, label_frames
 
@@ -244,12 +260,17 @@ if __name__ == "__main__":
     data_files = get_file_list(conf["data"]["folder"])
     raw_data, label_data = load_data(data_files, conf["data"]["data_settings"])
 
+    print("Class values {}".format(tf.math.reduce_sum(label_data, axis=0)))
+
     test_data, train_data = split_test_train(
         raw_data,
         label_data,
         split=conf["data"]["test_train_split"],
         percent_train=conf["data"]["percentage_train"],
     )
+
+    print("Train values {}".format(tf.math.reduce_sum(train_data[1], axis=0)))
+    print("Test values {}".format(tf.math.reduce_sum(test_data[1], axis=0)))
 
     # Set up ML model
     input_shape = train_data[0].shape[-2:]
@@ -288,16 +309,17 @@ if __name__ == "__main__":
     # Run training/learning algorithim
     history = fit_model(model, train_data, test_data, callback_list, conf["fit"])
 
-    # Save final model and model properties
-    model.save(model_save_dir.__str__())
+    if conf["save"]["final_model"]:
+        # Save final model and model properties
+        model.save(model_save_dir.__str__())
 
-    # Save model history
-    history_save_dir = pathlib.Path(
-        conf["save"]["history_dir"] + "/" + start_time + ".csv"
-    )
-    pd.DataFrame.from_dict(history.history).to_csv(
-        history_save_dir.__str__(), index=False
-    )
+        # Save model history
+        history_save_dir = pathlib.Path(
+            conf["save"]["history_dir"] + "/" + start_time + ".csv"
+        )
+        pd.DataFrame.from_dict(history.history).to_csv(
+            history_save_dir.__str__(), index=False
+        )
 
     actual_labels = tf.argmax(test_data[1], axis=1)
     predicted_labels = tf.argmax(model.predict(test_data[0]), axis=1)

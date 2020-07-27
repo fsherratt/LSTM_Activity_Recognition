@@ -26,6 +26,7 @@ if __name__ == "__main__":
     settings = {
         "num_timesteps": 128,
         "label_heading": "activity",
+        "normalize": False,
         "data_headings": [
             "r_ankle_accel_x",
             "r_ankle_accel_y",
