@@ -7,6 +7,7 @@ import pathlib
 import itertools
 import yaml
 import numpy as np
+import sys
 
 
 def _get_from_dict(data_dict, map_list):
@@ -42,12 +43,15 @@ def _replace_hparam(hyper_param_dict, dict_item, dictionary=None, path=None):
         if str.startswith(dict_item, "@HP_"):
             key = dict_item[1:]
 
-            if hyper_param_dict.__contains__(key):
+            if key in hyper_param_dict:
                 _set_in_dict(dictionary, path, hyper_param_dict.get(key))
                 print("{} set to {}".format(key, hyper_param_dict.get(key)))
 
             else:
-                raise KeyError("HParam dictionary does not contain key {}".format(key))
+                print(
+                    "HParam dictionary does not contain key {}".format(key),
+                    file=sys.stderr,
+                )
 
 
 def _generate_hparam_sets(hparam_set):
@@ -55,10 +59,89 @@ def _generate_hparam_sets(hparam_set):
     Generate all sets of possible hyper paramaters
     """
     items = list(hparam_set.values())
-    hparam_sets = list(itertools.product(*items))
-    hparam_sets = [dict(zip(hparam_set.keys(), x)) for x in hparam_sets]
+    product_hparam_set = list(itertools.product(*items))
+    product_hparam_dict = [dict(zip(hparam_set.keys(), x)) for x in product_hparam_set]
 
-    return hparam_sets
+    return product_hparam_dict
+
+
+def _parse_hparam_dict(hparam_set) -> dict:
+    if hparam_set is None:
+        return None
+
+    hparam_dict = {}
+
+    for param in hparam_set:
+        if param["type"] == "range":
+            if param["dtype"] == "float":
+                dtype = np.float
+            elif param["dtype"] == "int":
+                dtype = np.int
+            else:
+                dtype = np.float
+
+            if param["steps"]:
+                param_list = list(
+                    np.linspace(param["min"], param["max"], param["steps"], dtype=dtype)
+                )
+            else:
+                param_list = list(
+                    np.arange(
+                        param["min"], param["max"], param["interval"], dtype=dtype
+                    )
+                )
+
+        elif param["type"] == "list":
+            param_list = param["items"]
+
+        elif param["type"] == "const":
+            param_list = [param["value"]]
+
+        elif param["type"] == "bool":
+            true_params = _parse_hparam_dict(param["true_hparams"])
+            false_params = _parse_hparam_dict(param["false_hparams"])
+
+            param_list = [(True, true_params), (False, false_params)]
+
+        else:
+            continue
+
+        hparam_dict[param["hparam"]] = param_list
+
+    hparam_list = _generate_hparam_sets(hparam_dict)
+
+    # Flatten any boolean hyper paramater sets
+    new_hparam_list = []
+    for item in hparam_list:
+        flattened_list = _flatten_bool_dict(item)
+
+        if not flattened_list:
+            new_hparam_list.append(item)
+        else:
+            new_hparam_list.extend(flattened_list)
+
+    return new_hparam_list
+
+
+def _flatten_bool_dict(item):
+    new_list = []
+    for key, value in item.items():
+        if isinstance(value, tuple):
+            tmp_item = copy.deepcopy(item)
+            tmp_item[key] = value[0]
+
+            if value[1] is None:
+                new_list.append(tmp_item)
+                continue
+
+            print("Expand {}".format(key))
+
+            for bool_dict in value[1]:
+                tmp_item_2 = copy.deepcopy(tmp_item)
+                tmp_item_2 = {**tmp_item_2, **bool_dict}
+                new_list.append(tmp_item_2)
+
+    return new_list
 
 
 def load_hparam_set(path: str) -> dict:
@@ -68,18 +151,15 @@ def load_hparam_set(path: str) -> dict:
     with open(path) as file:
         hparam_set = yaml.full_load(file)
 
-    hparam_dict = {}
+    if "hparams" not in hparam_set:
+        return [None]
 
-    for param in hparam_set["hparams"]:
-        if param["type"] == "range":
-            param_list = list(np.arange(param["min"], param["max"], param["interval"]))
+    hparam_dict = _parse_hparam_dict(hparam_set["hparams"])
 
-        elif param["type"] == "list":
-            param_list = param["items"]
+    if hparam_dict is None:
+        return [None]
 
-        hparam_dict[param["hparam"]] = param_list
-
-    return _generate_hparam_sets(hparam_dict)
+    return hparam_dict
 
 
 def set_hparams(hparam_dict, param_config):
@@ -99,7 +179,8 @@ if __name__ == "__main__":
 
     _model_path = pathlib.Path("conf\\model.yaml")
     with open(_model_path) as _file:
-        _config = yaml.full_load(_file)
+        _og_config = yaml.full_load(_file)
 
     for _param_set in _hparam_sets:
-        _tmp_config = set_hparams(_param_set, copy.deepcopy(_config))
+        _config = copy.deepcopy(_og_config)
+        _config = set_hparams(_param_set, _config)

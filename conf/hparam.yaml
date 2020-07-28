@@ -1,25 +1,57 @@
 definitions:
-  - &list
+  # Single constant value
+  - &const
+    type: "const"
     hparam: ""
+    value:
+
+  # List of possible values
+  - &list
     type: "list"
+    hparam: ""
     items:
 
+  # Parametric sweep - Produces steps of interval x unless steps value is > 0
   - &range
-    hparam: ""
     type: "range"
+    hparam: ""
     min: 0
     max: 0
     interval: 0
+    steps: 0
+    dtype: float
+
+  # Boolean hparams - allows additional hparams for true and false values
+  - &bool
+    type: "bool"
+    hparam: ""
+    true_hparams: null
+    false_hparams: null
 
 hparams:
-  - <<: *range
-    hparam: "HP_LAYER_1_UNITS"
-    min: 60
-    max: 140
-    interval: 10
+  - <<: *const
+    hparam: "HP_NUMBER_ACTIVITIES"
+    value: 4
+
+  - <<: *const
+    hparam: "HP_DROPPOUT_RATE"
+    value: 0.2
 
   - <<: *range
-    hparam: "HP_DROPPOUT_RATE"
-    min: 0.2
-    max: 0.8
-    interval: 0.1
+    hparam: "HP_LAYER_1_UNITS"
+    min: 6
+    max: 60
+    steps: 11
+    dtype: int
+
+  - <<: *const
+    hparam: "HP_LAYER_2_UNITS"
+    value: 32
+
+  - <<: *const
+    hparam: "HP_LAYER_3_UNITS"
+    value: 24
+
+  - <<: *const
+    hparam: "HP_LAYER_4_UNITS"
+    value: 6

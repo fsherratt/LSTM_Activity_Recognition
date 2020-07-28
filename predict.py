@@ -15,7 +15,7 @@ if __name__ == "__main__":
     hardware_setup(use_gpu=True, random_seed=0)
 
     # Load data file
-    data_dir = "C:/Users/Freddie/Documents/PhD/Machine-Learning/Output/1_20200611-101247/Source_Data/"
+    data_dir = "C:/Users/Freddie/Documents/PhD/Machine-Learning/Output/9_20200723_110700_Stop_State_No_Tran_No_Normalize/Predict_Data/"
     data_dir = pathlib.Path(data_dir)
 
     file_list = get_file_list(data_dir)
@@ -34,6 +34,12 @@ if __name__ == "__main__":
             "r_ankle_gyro_x",
             "r_ankle_gyro_y",
             "r_ankle_gyro_z",
+            "l_ankle_accel_x",
+            "l_ankle_accel_y",
+            "l_ankle_accel_z",
+            "l_ankle_gyro_x",
+            "l_ankle_gyro_y",
+            "l_ankle_gyro_z",
         ],
         "num_labels": 4,
         "skip": 0,
@@ -45,7 +51,7 @@ if __name__ == "__main__":
 
     # Load tensorflow model
     print("Loading model")
-    model_dir = "C:/Users/Freddie/Documents/PhD/Machine-Learning/Output/1_20200611-101247/Model/model"
+    model_dir = "C:/Users/Freddie/Documents/PhD/Machine-Learning/Output/9_20200723_110700_Stop_State_No_Tran_No_Normalize/Model/model/"
     model_dir = pathlib.Path(model_dir).__str__()
 
     model = tf.keras.models.load_model(model_dir)

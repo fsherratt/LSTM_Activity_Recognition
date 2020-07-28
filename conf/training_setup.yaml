@@ -1,16 +1,22 @@
+hyper_paramaters:
+  hparam_file: "conf/hparam.yaml"
+  hparam_log_file: "logs/hparam.log"
+  hparam_result_file: "logs/result.log"
+
 hardware_setup:
   use_gpu: true
   random_seed: 0
 
 data:
-  folder: "Data_3_state"
+  folder: "C:/Users/Freddie/Documents/PhD/Data/Stairs/Out"
+  # folder: "C:/Users/Freddie/Documents/PhD/Machine-Learning/Output/6_20200722_162100_Stop_State/Model_Source_Data"
   test_train_split: 0.7
 
   percentage_train: 1
 
   data_settings:
     num_timesteps: 128
-    num_labels: 4
+    num_labels: "@HP_NUMBER_ACTIVITIES"
     skip: 1
     normalize: false
     label_heading: "activity"
@@ -75,17 +81,17 @@ compile:
     - "categorical_accuracy"
 
 callbacks:
-  use_tensorboard: true
+  use_tensorboard: false
   tensorboard:
     histogram_freq: 1
 
-  use_early_stopping: true
+  use_early_stopping: false
   early_stopping:
     monitor: "val_loss"
     verbose: 1
     patience: 5
 
-  use_save_model: true
+  use_save_model: false
   save_model:
     verbose: 1
     save_weights_only: true
@@ -93,11 +99,11 @@ callbacks:
 
 fit:
   batch_size: 500
-  epochs: 1000
+  epochs: 500
   shuffle: true
 
 save:
-  final_model: true
+  final_model: false
 
   config_dir: "logs/conf/"
   tensorboard_dir: "logs/scalars/"

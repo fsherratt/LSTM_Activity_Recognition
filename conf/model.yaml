@@ -1,4 +1,9 @@
 definitions:
+  - &layer
+    type:
+    disabled: false
+    args:
+
   - &LSTM-args
     units: 6
     return_sequences: true
@@ -6,39 +11,50 @@ definitions:
     stateful: false
 
 layers:
-  - type: lstm
+  - <<: *layer
+    type: lstm
     args:
       <<: *LSTM-args
       units: "@HP_LAYER_1_UNITS"
 
-  - type: lstm
+  - <<: *layer
+    type: lstm
+    disabled: true
     args:
       <<: *LSTM-args
-      units: 32
+      units: "@HP_LAYER_2_UNITS"
 
-  - type: lstm
+  - <<: *layer
+    type: lstm
+    disabled: true
     args:
       <<: *LSTM-args
-      units: 24
+      units: "@HP_LAYER_3_UNITS"
 
-  - type: lstm
+  - <<: *layer
+    type: lstm
+    disabled: true
     args:
       <<: *LSTM-args
-      units: 6
+      units: "@HP_LAYER_4_UNITS"
 
-  - type: reshape
+  - <<: *layer
+    type: reshape
     args:
       target_shape:
         - 768
 
-  - type: dropout
+  - <<: *layer
+    type: dropout
     args:
       rate: "@HP_DROPPOUT_RATE"
 
-  - type: dense
+  - <<: *layer
+    type: dense
     args:
-      units: 4 # This needs to match activities
+      units: "@HP_NUMBER_ACTIVITIES" # This needs to match activities
 
-  - type: activation
+  - <<: *layer
+    type: activation
     args:
       activation: "relu"

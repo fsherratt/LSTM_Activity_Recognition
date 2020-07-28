@@ -6,13 +6,15 @@ import datetime
 import os
 import pathlib
 import shutil
-import sys
+import copy
+import csv
 
 import numpy as np
-import omegaconf
 import pandas as pd
 import tensorflow as tf
 import yaml
+
+import hparam_load
 
 
 def hardware_setup(use_gpu: True, random_seed: 0):
@@ -66,7 +68,8 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
     tf_model = tf.keras.Sequential()
 
     for layer in layer_definitions:
-        tf_model.add(layer_dict[layer["type"]](**layer["args"]))
+        if not layer["disabled"]:
+            tf_model.add(layer_dict[layer["type"]](**layer["args"]))
 
     return tf_model
 
@@ -124,7 +127,7 @@ def load_data(data_files: list, settings: dict, append=False):
     i_max = len(data_files)
 
     for file in data_files:
-        print("{} of {} - Opening {}".format(i, i_max, file))
+        print("{} of {} - Opening {}".format(i, i_max, file), end="\r")
         i += 1
         # TODO: parameterise constants
         new_x, new_y = parse_file(file, **settings)
@@ -230,108 +233,191 @@ def save_copy_config(file_dir: str, config_file: str):
 if __name__ == "__main__":
     args = parse_cli()
 
-    start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-
     # Load configuration files
-    conf = load_config(config_file=args.config_file)
-    model_conf = load_config(config_file=conf["model"]["config_file"])
+    _conf = load_config(config_file=args.config_file)
+    _model_conf = load_config(config_file=_conf["model"]["config_file"])
+    hparams = hparam_load.load_hparam_set(_conf["hyper_paramaters"]["hparam_file"])
 
     if args.seed:
-        conf["hardware_setup"]["random_seed"] = args.seed
+        _conf["hardware_setup"]["random_seed"] = args.seed
 
     if args.percent_traning_data:
-        conf["data"]["percentage_train"] = args.percent_traning_data
-
-    print("------------------------------")
-    print("Timestamp: {}".format(start_time))
-    print("Random Seed: {}".format(conf["hardware_setup"]["random_seed"]))
-    print("Training Data Used: {:.2f}%".format(conf["data"]["percentage_train"] * 100))
-    print("------------------------------")
-
-    save_copy_config(conf["save"]["config_dir"] + start_time, args.config_file)
-    save_copy_config(
-        conf["save"]["config_dir"] + start_time, conf["model"]["config_file"]
-    )
+        _conf["data"]["percentage_train"] = args.percent_traning_data
 
     # Setup physical devices
-    hardware_setup(**conf["hardware_setup"])
+    hardware_setup(**_conf["hardware_setup"])
 
-    # Import and process data
-    data_files = get_file_list(conf["data"]["folder"])
-    raw_data, label_data = load_data(data_files, conf["data"]["data_settings"])
+    # Hyper paramater training
+    for ix, hparam_set in enumerate(hparams):
+        try:
+            start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    print("Class values {}".format(tf.math.reduce_sum(label_data, axis=0)))
+            # Update config with next hyperparamater set
+            conf = copy.deepcopy(_conf)
+            conf = hparam_load.set_hparams(hparam_set, conf)
 
-    test_data, train_data = split_test_train(
-        raw_data,
-        label_data,
-        split=conf["data"]["test_train_split"],
-        percent_train=conf["data"]["percentage_train"],
-    )
+            model_conf = copy.deepcopy(_model_conf)
+            model_conf = hparam_load.set_hparams(hparam_set, model_conf)
 
-    print("Train values {}".format(tf.math.reduce_sum(train_data[1], axis=0)))
-    print("Test values {}".format(tf.math.reduce_sum(test_data[1], axis=0)))
+            # Save copy of hyperparamaters
+            print("\n------------------------")
+            print("Start: {}".format(start_time))
+            print("Sweep: {} of {}".format(ix + 1, len(hparams)))
+            print("Hyperparamaters: ", end="")
+            print(hparam_set)
+            print("------------------------\n")
 
-    # Set up ML model
-    input_shape = train_data[0].shape[-2:]
-    model = create_model(
-        layer_definitions=model_conf["layers"], input_shape=input_shape
-    )
-    loss_func = loss_function(conf["loss_func"]["type"], conf["loss_func"]["settings"])
-    model = compile_model(tf_model=model, loss_func=loss_func, settings=conf["compile"])
-    model_save_dir = pathlib.Path(conf["save"]["model_dir"] + "/" + start_time + "/")
+            with open(
+                pathlib.Path(conf["hyper_paramaters"]["hparam_log_file"]), mode="a+"
+            ) as file:
+                print(
+                    ["Timestamp", "Sweep", "Sweep Total"] + list(hparam_set.keys()),
+                    file=file,
+                )
+                print(
+                    [start_time, ix + 1, len(hparams)] + list(hparam_set.values()),
+                    file=file,
+                )
 
-    # Setup callbacks
-    callback_list = []
+            # Import and process data
+            data_files = get_file_list(conf["data"]["folder"])
+            raw_data, label_data = load_data(data_files, conf["data"]["data_settings"])
 
-    if conf["callbacks"]["use_tensorboard"]:
-        tensorboard_dir = pathlib.Path(
-            conf["save"]["tensorboard_dir"] + "/" + start_time
-        )
-        callback_list.append(
-            tensorboard_callback(
-                settings=conf["callbacks"]["tensorboard"], save_dir=tensorboard_dir
+            print("Class values {}".format(tf.math.reduce_sum(label_data, axis=0)))
+
+            test_data, train_data = split_test_train(
+                raw_data,
+                label_data,
+                split=conf["data"]["test_train_split"],
+                percent_train=conf["data"]["percentage_train"],
             )
-        )
 
-    if conf["callbacks"]["use_early_stopping"]:
-        callback_list.append(
-            early_stopping_callback(settings=conf["callbacks"]["early_stopping"])
-        )
+            print("Train values {}".format(tf.math.reduce_sum(train_data[1], axis=0)))
+            print("Test values {}".format(tf.math.reduce_sum(test_data[1], axis=0)))
 
-    if conf["callbacks"]["use_save_model"]:
-        callback_list.append(
-            save_model_callback(
-                settings=conf["callbacks"]["save_model"], save_path=model_save_dir
+            # Set up ML model
+            input_shape = train_data[0].shape[-2:]
+            model = create_model(
+                layer_definitions=model_conf["layers"], input_shape=input_shape
             )
-        )
+            loss_func = loss_function(
+                conf["loss_func"]["type"], conf["loss_func"]["settings"]
+            )
+            model = compile_model(
+                tf_model=model, loss_func=loss_func, settings=conf["compile"]
+            )
+            model_save_dir = pathlib.Path(
+                conf["save"]["model_dir"] + "/" + start_time + "/"
+            )
 
-    # Run training/learning algorithim
-    history = fit_model(model, train_data, test_data, callback_list, conf["fit"])
+            # Setup callbacks
+            callback_list = []
 
-    if conf["save"]["final_model"]:
-        # Save final model and model properties
-        model.save(model_save_dir.__str__())
+            if conf["callbacks"]["use_tensorboard"]:
+                tensorboard_dir = pathlib.Path(
+                    conf["save"]["tensorboard_dir"] + "/" + start_time
+                )
+                callback_list.append(
+                    tensorboard_callback(
+                        settings=conf["callbacks"]["tensorboard"],
+                        save_dir=tensorboard_dir,
+                    )
+                )
 
-        # Save model history
-        history_save_dir = pathlib.Path(
-            conf["save"]["history_dir"] + "/" + start_time + ".csv"
-        )
-        pd.DataFrame.from_dict(history.history).to_csv(
-            history_save_dir.__str__(), index=False
-        )
+            if conf["callbacks"]["use_early_stopping"]:
+                callback_list.append(
+                    early_stopping_callback(
+                        settings=conf["callbacks"]["early_stopping"]
+                    )
+                )
 
-    actual_labels = tf.argmax(test_data[1], axis=1)
-    predicted_labels = tf.argmax(model.predict(test_data[0]), axis=1)
-    num_classes = conf["data"]["data_settings"]["num_labels"]
+            if conf["callbacks"]["use_save_model"]:
+                callback_list.append(
+                    save_model_callback(
+                        settings=conf["callbacks"]["save_model"],
+                        save_path=model_save_dir,
+                    )
+                )
 
-    conf_matrix = tf.math.confusion_matrix(
-        labels=actual_labels, predictions=predicted_labels, num_classes=num_classes
-    )
+            save_copy_config(conf["save"]["config_dir"] + start_time, args.config_file)
+            save_copy_config(
+                conf["save"]["config_dir"] + start_time, conf["model"]["config_file"]
+            )
 
-    print("Confusion matrix")
-    print(conf_matrix)
+            # Run training/learning algorithim
+            history = fit_model(
+                model, train_data, test_data, callback_list, conf["fit"]
+            )
 
-    print("Accuracy")
-    print(history.history["categorical_accuracy"][-1])
-    print(history.history["val_categorical_accuracy"][-1])
+            if conf["save"]["final_model"]:
+                # Save final model and model properties
+                model.save(model_save_dir.__str__())
+
+                # Save model history
+                history_save_dir = pathlib.Path(
+                    conf["save"]["history_dir"] + "/" + start_time + ".csv"
+                )
+                pd.DataFrame.from_dict(history.history).to_csv(
+                    history_save_dir.__str__(), index=False
+                )
+
+            # Load test script
+
+            # Analyse performance
+            actual_labels = tf.argmax(test_data[1], axis=1)
+            predicted_labels = tf.argmax(model.predict(test_data[0]), axis=1)
+            num_classes = conf["data"]["data_settings"]["num_labels"]
+
+            TP = tf.math.count_nonzero(predicted_labels * actual_labels)
+            TN = tf.math.count_nonzero((predicted_labels - 1) * (actual_labels - 1))
+            FP = tf.math.count_nonzero(predicted_labels * (actual_labels - 1))
+            FN = tf.math.count_nonzero((predicted_labels - 1) * actual_labels)
+
+            precision = float(TP / (TP + FP))
+            recall = float(TP / (TP + FN))
+            f1 = float(2 * precision * recall / (precision + recall))
+
+            conf_matrix = tf.math.confusion_matrix(
+                labels=actual_labels,
+                predictions=predicted_labels,
+                num_classes=num_classes,
+            )
+
+            print("Confusion matrix")
+            print(conf_matrix)
+
+            print("Accuracy")
+            print(history.history["categorical_accuracy"][-1])
+            print(history.history["val_categorical_accuracy"][-1])
+
+            # Save results to log file
+            with open(
+                pathlib.Path(conf["hyper_paramaters"]["hparam_result_file"]), mode="a+"
+            ) as file:
+                print(
+                    [
+                        "Timestamp",
+                        "categorical_accuracy",
+                        "val_categorical_accuracy",
+                        "Precision",
+                        "Recall",
+                        "F1_Score",
+                    ],
+                    file=file,
+                )
+                print(
+                    [
+                        start_time,
+                        history.history["categorical_accuracy"][-1],
+                        history.history["val_categorical_accuracy"][-1],
+                        precision,
+                        recall,
+                        f1,
+                    ],
+                    file=file,
+                )
+        # Catch any errors in code
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print(e)
