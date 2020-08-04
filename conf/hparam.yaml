@@ -11,6 +11,12 @@ definitions:
     hparam: ""
     items:
 
+  # Sets of values -
+  - &set
+    type: "set"
+    hparam: ""
+    items:
+
   # Parametric sweep - Produces steps of interval x unless steps value is > 0
   - &range
     type: "range"
@@ -21,14 +27,11 @@ definitions:
     steps: 0
     dtype: float
 
-  # Boolean hparams - allows additional hparams for true and false values
-  - &bool
-    type: "bool"
-    hparam: ""
-    true_hparams: null
-    false_hparams: null
-
 hparams:
+  - <<: *const
+    hparam: "HP_TIMESTEPS"
+    value: 256
+
   - <<: *const
     hparam: "HP_NUMBER_ACTIVITIES"
     value: 4
@@ -37,21 +40,37 @@ hparams:
     hparam: "HP_DROPPOUT_RATE"
     value: 0.2
 
-  - <<: *range
-    hparam: "HP_LAYER_1_UNITS"
-    min: 6
-    max: 60
-    steps: 11
-    dtype: int
+  - <<: *list
+    hparam: "HP_X_VALIDATION_EXCLUDE"
+    items:
+      - "Participant_01"
+      - "Participant_02"
+      # - "Participant_03"
+      # - "Participant_04"
+      # - "Participant_06"
+      # - "Participant_07"
+      # - "Participant_08"
+      # - "Participant_09"
+      # - "Participant_10"
+      # - "Participant_11"
+      # - "Participant_12"
+      # - "Participant_13"
+      # - "Participant_14"
+      # - "Participant_15"
+      # - "Participant_16"
 
-  - <<: *const
-    hparam: "HP_LAYER_2_UNITS"
-    value: 32
-
-  - <<: *const
-    hparam: "HP_LAYER_3_UNITS"
-    value: 24
-
-  - <<: *const
-    hparam: "HP_LAYER_4_UNITS"
-    value: 6
+  - <<: *set
+    hparam: "HP_LAYER_SIZE"
+    items:
+      - - <<: *const
+          hparam: "HP_LAYER_1_UNITS"
+          value: 32
+        - <<: *const
+          hparam: "HP_LAYER_2_UNITS"
+          value: 32
+        - <<: *const
+          hparam: "HP_LAYER_3_UNITS"
+          value: 32
+        - <<: *const
+          hparam: "HP_LAYER_4_UNITS"
+          value: 32

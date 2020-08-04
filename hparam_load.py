@@ -91,17 +91,18 @@ def _parse_hparam_dict(hparam_set) -> dict:
                     )
                 )
 
-        elif param["type"] == "list":
-            param_list = param["items"]
-
         elif param["type"] == "const":
             param_list = [param["value"]]
 
-        elif param["type"] == "bool":
-            true_params = _parse_hparam_dict(param["true_hparams"])
-            false_params = _parse_hparam_dict(param["false_hparams"])
-
-            param_list = [(True, true_params), (False, false_params)]
+        elif param["type"] == "set" or param["type"] == "list":
+            param_list = []
+            for item in param["items"]:
+                if isinstance(item, dict):
+                    param_list.append(tuple(_parse_hparam_dict([item])))
+                elif isinstance(item, list):
+                    param_list.append(tuple(_parse_hparam_dict(item)))
+                else:
+                    param_list.append(item)
 
         else:
             continue
@@ -125,21 +126,21 @@ def _parse_hparam_dict(hparam_set) -> dict:
 
 def _flatten_bool_dict(item):
     new_list = []
+    dict_list = {}
     for key, value in item.items():
         if isinstance(value, tuple):
-            tmp_item = copy.deepcopy(item)
-            tmp_item[key] = value[0]
+            dict_list[key] = value
 
-            if value[1] is None:
-                new_list.append(tmp_item)
-                continue
+    if len(dict_list) > 0:
+        expanded_list = _generate_hparam_sets(dict_list)
+        for hp_row in expanded_list:
 
-            print("Expand {}".format(key))
+            new_dict = copy.deepcopy(item)
+            for hp_key, hp_item in hp_row.items():
+                new_dict = {**new_dict, **hp_item}
+                del new_dict[hp_key]
 
-            for bool_dict in value[1]:
-                tmp_item_2 = copy.deepcopy(tmp_item)
-                tmp_item_2 = {**tmp_item_2, **bool_dict}
-                new_list.append(tmp_item_2)
+            new_list.append(new_dict)
 
     return new_list
 

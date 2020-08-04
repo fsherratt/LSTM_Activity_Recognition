@@ -69,6 +69,14 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
 
     for layer in layer_definitions:
         if not layer["disabled"]:
+
+            # Deal with the fact that we tensorflow must have a final dimension
+            if layer["type"] == "reshape":
+                if layer["args"]["target_shape"][0] == None:
+                    layer["args"]["target_shape"][0] = np.prod(
+                        tf_model.layers[-1].output.shape[1:]
+                    )
+
             tf_model.add(layer_dict[layer["type"]](**layer["args"]))
 
     return tf_model
@@ -106,14 +114,21 @@ def fit_model(
     return history
 
 
-def get_file_list(data_directory: str) -> list:
+def get_file_list(data_directory: str, exclude_dir=None) -> list:
     data_directory = pathlib.Path(data_directory)
     files = os.listdir(data_directory)
     data_files = []
 
     for file in files:
+        if file == exclude_dir:
+            continue
+
         file = data_directory / file
-        if file.exists() and file.suffix == ".csv":
+
+        if os.path.isdir(file):
+            data_files.extend(get_file_list(file))
+
+        elif file.exists() and file.suffix == ".csv":
             data_files.append(file)
 
     return data_files
@@ -127,7 +142,7 @@ def load_data(data_files: list, settings: dict, append=False):
     i_max = len(data_files)
 
     for file in data_files:
-        print("{} of {} - Opening {}".format(i, i_max, file), end="\r")
+        print(" {} of {} - Opening {} ".format(i, i_max, file), end="\r")
         i += 1
         # TODO: parameterise constants
         new_x, new_y = parse_file(file, **settings)
@@ -248,7 +263,10 @@ if __name__ == "__main__":
     hardware_setup(**_conf["hardware_setup"])
 
     # Hyper paramater training
+    start_ix_offset = 0
     for ix, hparam_set in enumerate(hparams):
+        if ix + 1 < start_ix_offset:
+            continue
         try:
             start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -280,12 +298,15 @@ if __name__ == "__main__":
                 )
 
             # Import and process data
-            data_files = get_file_list(conf["data"]["folder"])
+            # Filter out participant for cross validation study
+            data_files = get_file_list(
+                conf["data"]["folder"], conf["data"]["x_validation_exclude"]
+            )
             raw_data, label_data = load_data(data_files, conf["data"]["data_settings"])
 
             print("Class values {}".format(tf.math.reduce_sum(label_data, axis=0)))
 
-            test_data, train_data = split_test_train(
+            validation_data, train_data = split_test_train(
                 raw_data,
                 label_data,
                 split=conf["data"]["test_train_split"],
@@ -293,7 +314,11 @@ if __name__ == "__main__":
             )
 
             print("Train values {}".format(tf.math.reduce_sum(train_data[1], axis=0)))
-            print("Test values {}".format(tf.math.reduce_sum(test_data[1], axis=0)))
+            print(
+                "Validation values {}".format(
+                    tf.math.reduce_sum(validation_data[1], axis=0)
+                )
+            )
 
             # Set up ML model
             input_shape = train_data[0].shape[-2:]
@@ -346,7 +371,7 @@ if __name__ == "__main__":
 
             # Run training/learning algorithim
             history = fit_model(
-                model, train_data, test_data, callback_list, conf["fit"]
+                model, train_data, validation_data, callback_list, conf["fit"]
             )
 
             if conf["save"]["final_model"]:
@@ -361,25 +386,36 @@ if __name__ == "__main__":
                     history_save_dir.__str__(), index=False
                 )
 
-            # Load test script
+            # Load test data
+            data_files = get_file_list(
+                conf["data"]["folder"] + "/" + conf["data"]["x_validation_exclude"]
+            )
+            test_data, test_label_data = load_data(
+                data_files, conf["data"]["data_settings"]
+            )
+
+            test_data = np.asarray(test_data)
+            test_label_data = np.asarray(test_label_data)
 
             # Analyse performance
-            actual_labels = tf.argmax(test_data[1], axis=1)
-            predicted_labels = tf.argmax(model.predict(test_data[0]), axis=1)
+            actual_labels = tf.argmax(test_label_data, axis=-1)
+            predicted_classes = tf.argmax(model.predict(test_data), axis=-1)
+
             num_classes = conf["data"]["data_settings"]["num_labels"]
 
-            TP = tf.math.count_nonzero(predicted_labels * actual_labels)
-            TN = tf.math.count_nonzero((predicted_labels - 1) * (actual_labels - 1))
-            FP = tf.math.count_nonzero(predicted_labels * (actual_labels - 1))
-            FN = tf.math.count_nonzero((predicted_labels - 1) * actual_labels)
+            TP = tf.math.count_nonzero(predicted_classes * actual_labels)
+            TN = tf.math.count_nonzero((predicted_classes - 1) * (actual_labels - 1))
+            FP = tf.math.count_nonzero(predicted_classes * (actual_labels - 1))
+            FN = tf.math.count_nonzero((predicted_classes - 1) * actual_labels)
 
+            accuracy = float(TP / actual_labels.shape[0])
             precision = float(TP / (TP + FP))
             recall = float(TP / (TP + FN))
             f1 = float(2 * precision * recall / (precision + recall))
 
             conf_matrix = tf.math.confusion_matrix(
                 labels=actual_labels,
-                predictions=predicted_labels,
+                predictions=predicted_classes,
                 num_classes=num_classes,
             )
 
@@ -397,27 +433,35 @@ if __name__ == "__main__":
                 print(
                     [
                         "Timestamp",
-                        "categorical_accuracy",
-                        "val_categorical_accuracy",
+                        "epochs",
+                        "train_accuracy",
+                        "val_accuracy",
+                        "test_accuracy",
                         "Precision",
                         "Recall",
                         "F1_Score",
+                        "Conf_matrix",
                     ],
                     file=file,
                 )
                 print(
                     [
                         start_time,
+                        history.epoch[-1],
                         history.history["categorical_accuracy"][-1],
                         history.history["val_categorical_accuracy"][-1],
+                        accuracy,
                         precision,
                         recall,
                         f1,
+                        np.array2string(
+                            np.asarray(conf_matrix).reshape((-1)), separator=","
+                        ),
                     ],
                     file=file,
                 )
         # Catch any errors in code
         except KeyboardInterrupt:
             break
-        except Exception as e:
-            print(e)
+        # except Exception as e:
+        #     print(e)

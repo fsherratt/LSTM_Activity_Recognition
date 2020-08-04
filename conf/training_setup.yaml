@@ -14,8 +14,10 @@ data:
 
   percentage_train: 1
 
+  x_validation_exclude: "@HP_X_VALIDATION_EXCLUDE"
+
   data_settings:
-    num_timesteps: 128
+    num_timesteps: "@HP_TIMESTEPS"
     num_labels: "@HP_NUMBER_ACTIVITIES"
     skip: 1
     normalize: false
@@ -85,7 +87,7 @@ callbacks:
   tensorboard:
     histogram_freq: 1
 
-  use_early_stopping: false
+  use_early_stopping: true
   early_stopping:
     monitor: "val_loss"
     verbose: 1
@@ -99,7 +101,7 @@ callbacks:
 
 fit:
   batch_size: 500
-  epochs: 500
+  epochs: 1000
   shuffle: true
 
 save:

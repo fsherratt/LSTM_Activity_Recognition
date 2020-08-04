@@ -19,21 +19,21 @@ layers:
 
   - <<: *layer
     type: lstm
-    disabled: true
+    disabled: false
     args:
       <<: *LSTM-args
       units: "@HP_LAYER_2_UNITS"
 
   - <<: *layer
     type: lstm
-    disabled: true
+    disabled: false
     args:
       <<: *LSTM-args
       units: "@HP_LAYER_3_UNITS"
 
   - <<: *layer
     type: lstm
-    disabled: true
+    disabled: false
     args:
       <<: *LSTM-args
       units: "@HP_LAYER_4_UNITS"
@@ -42,7 +42,7 @@ layers:
     type: reshape
     args:
       target_shape:
-        - 768
+        - null
 
   - <<: *layer
     type: dropout
