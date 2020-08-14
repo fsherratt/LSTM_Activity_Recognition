@@ -14,6 +14,9 @@ import pandas as pd
 import tensorflow as tf
 import yaml
 
+from sklearn import metrics as skmetrics
+from sklearn.utils import class_weight
+
 import hparam_load
 
 
@@ -103,12 +106,22 @@ def fit_model(
     callbacks: None,
     settings=None,
 ):
+    y = np.argmax(training_data[1], axis=-1)
+
+    class_weights = class_weight.compute_class_weight(
+        class_weight="balanced", classes=np.unique(y), y=y
+    )
+
+    print("Class Weights: ", end="")
+    print(class_weights)
+
     history = tf_model.fit(
         x=training_data[0],
         y=training_data[1],
         validation_data=validation_data,
         callbacks=callbacks,
-        **settings
+        class_weight=class_weights,
+        **settings,
     )
 
     return history
