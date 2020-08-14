@@ -356,16 +356,21 @@ if __name__ == "__main__":
                     )
                 )
 
-            save_copy_config(conf["save"]["config_dir"] + start_time, args.config_file)
-            save_copy_config(
-                conf["save"]["config_dir"] + start_time, conf["model"]["config_file"]
-            )
+            if conf["save"]["config"]:
+                save_copy_config(
+                    conf["save"]["config_dir"] + start_time, args.config_file
+                )
+                save_copy_config(
+                    conf["save"]["config_dir"] + start_time,
+                    conf["model"]["config_file"],
+                )
 
             # Run training/learning algorithim
             history = fit_model(
                 model, train_data, validation_data, callback_list, conf["fit"]
             )
 
+            # Save final model
             if conf["save"]["final_model"]:
                 # Save final model and model properties
                 model.save(model_save_dir.__str__())

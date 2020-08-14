@@ -1,7 +1,7 @@
 definitions:
   - &layer
     type:
-    disabled: false
+    enabled: true
     args:
 
   - &LSTM-args
@@ -19,21 +19,21 @@ layers:
 
   - <<: *layer
     type: lstm
-    disabled: false
+    enabled: "@HP_LAYER_2_UNITS"
     args:
       <<: *LSTM-args
       units: "@HP_LAYER_2_UNITS"
 
   - <<: *layer
     type: lstm
-    disabled: false
+    enabled: "@HP_LAYER_3_UNITS"
     args:
       <<: *LSTM-args
       units: "@HP_LAYER_3_UNITS"
 
   - <<: *layer
     type: lstm
-    disabled: false
+    enabled: "@HP_LAYER_4_UNITS"
     args:
       <<: *LSTM-args
       units: "@HP_LAYER_4_UNITS"
