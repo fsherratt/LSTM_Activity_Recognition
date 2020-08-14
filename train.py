@@ -8,6 +8,7 @@ import pathlib
 import shutil
 import copy
 import csv
+import sys
 
 import numpy as np
 import pandas as pd
@@ -71,8 +72,7 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
     tf_model = tf.keras.Sequential()
 
     for layer in layer_definitions:
-        if not layer["disabled"]:
-
+        if layer["enabled"]:
             # Deal with the fact that we tensorflow must have a final dimension
             if layer["type"] == "reshape":
                 if layer["args"]["target_shape"][0] == None:
@@ -298,18 +298,6 @@ if __name__ == "__main__":
             print(hparam_set)
             print("------------------------\n")
 
-            with open(
-                pathlib.Path(conf["hyper_paramaters"]["hparam_log_file"]), mode="a+"
-            ) as file:
-                print(
-                    ["Timestamp", "Sweep", "Sweep Total"] + list(hparam_set.keys()),
-                    file=file,
-                )
-                print(
-                    [start_time, ix + 1, len(hparams)] + list(hparam_set.values()),
-                    file=file,
-                )
-
             # Import and process data
             # Filter out participant for cross validation study
             data_files = get_file_list(
@@ -317,20 +305,11 @@ if __name__ == "__main__":
             )
             raw_data, label_data = load_data(data_files, conf["data"]["data_settings"])
 
-            print("Class values {}".format(tf.math.reduce_sum(label_data, axis=0)))
-
             validation_data, train_data = split_test_train(
                 raw_data,
                 label_data,
                 split=conf["data"]["test_train_split"],
                 percent_train=conf["data"]["percentage_train"],
-            )
-
-            print("Train values {}".format(tf.math.reduce_sum(train_data[1], axis=0)))
-            print(
-                "Validation values {}".format(
-                    tf.math.reduce_sum(validation_data[1], axis=0)
-                )
             )
 
             # Set up ML model
@@ -407,74 +386,82 @@ if __name__ == "__main__":
                 data_files, conf["data"]["data_settings"]
             )
 
+            # Print data summary
+            print("Class values {}".format(tf.math.reduce_sum(label_data, axis=0)))
+            print("Train values {}".format(tf.math.reduce_sum(train_data[1], axis=0)))
+            print(
+                "Val values {}".format(tf.math.reduce_sum(validation_data[1], axis=0))
+            )
+            print("Test values {}".format(tf.math.reduce_sum(test_label_data, axis=0)))
+
             test_data = np.asarray(test_data)
             test_label_data = np.asarray(test_label_data)
 
             # Analyse performance
-            actual_labels = tf.argmax(test_label_data, axis=-1)
-            predicted_classes = tf.argmax(model.predict(test_data), axis=-1)
+            actual_class = tf.math.argmax(test_label_data, axis=-1)
+            predicted_classes = tf.math.argmax(model.predict(test_data), axis=-1)
 
             num_classes = conf["data"]["data_settings"]["num_labels"]
 
-            TP = tf.math.count_nonzero(predicted_classes * actual_labels)
-            TN = tf.math.count_nonzero((predicted_classes - 1) * (actual_labels - 1))
-            FP = tf.math.count_nonzero(predicted_classes * (actual_labels - 1))
-            FN = tf.math.count_nonzero((predicted_classes - 1) * actual_labels)
-
-            accuracy = float(TP / actual_labels.shape[0])
-            precision = float(TP / (TP + FP))
-            recall = float(TP / (TP + FN))
-            f1 = float(2 * precision * recall / (precision + recall))
-
             conf_matrix = tf.math.confusion_matrix(
-                labels=actual_labels,
+                labels=actual_class,
                 predictions=predicted_classes,
                 num_classes=num_classes,
             )
-
-            print("Confusion matrix")
             print(conf_matrix)
 
-            print("Accuracy")
-            print(history.history["categorical_accuracy"][-1])
-            print(history.history["val_categorical_accuracy"][-1])
+            target_names = ["W", "SA", "SD", "S"]
 
-            # Save results to log file
+            class_report = skmetrics.classification_report(
+                y_true=actual_class,
+                y_pred=predicted_classes,
+                target_names=target_names,
+                labels=np.arange(conf["data"]["data_settings"]["num_labels"]),
+                output_dict=True,
+                zero_division=0,
+            )
+
+            flat_class_report = pd.io.json._normalize.nested_to_record(
+                class_report, sep="_"
+            )
+
+            # Save results to log files
+            header = ["Timestamp", "Sweep", "Sweep Total"]
+            header.extend(hparam_set.keys())
+
+            values = [start_time, ix + 1, len(hparams)]
+            values.extend(hparam_set.values())
+            with open(
+                pathlib.Path(conf["hyper_paramaters"]["hparam_log_file"]), mode="a+"
+            ) as file:
+                print(
+                    ",".join(map(str, header)), file=file,
+                )
+                print(
+                    ",".join(map(str, values)), file=file,
+                )
+
+            header = ["Timestamp", "params", "epochs", "train_accuracy", "val_accuracy"]
+            header.extend(flat_class_report.keys())
+
+            values = [
+                start_time,
+                model.count_params(),
+                history.epoch[-1] + 1,
+                history.history["categorical_accuracy"][-1],
+                history.history["val_categorical_accuracy"][-1],
+            ]
+            values.extend(flat_class_report.values())
+
             with open(
                 pathlib.Path(conf["hyper_paramaters"]["hparam_result_file"]), mode="a+"
             ) as file:
                 print(
-                    [
-                        "Timestamp",
-                        "epochs",
-                        "train_accuracy",
-                        "val_accuracy",
-                        "test_accuracy",
-                        "Precision",
-                        "Recall",
-                        "F1_Score",
-                        "Conf_matrix",
-                    ],
-                    file=file,
+                    ",".join(map(str, header)), file=file,
                 )
                 print(
-                    [
-                        start_time,
-                        history.epoch[-1],
-                        history.history["categorical_accuracy"][-1],
-                        history.history["val_categorical_accuracy"][-1],
-                        accuracy,
-                        precision,
-                        recall,
-                        f1,
-                        np.array2string(
-                            np.asarray(conf_matrix).reshape((-1)), separator=","
-                        ),
-                    ],
-                    file=file,
+                    ",".join(map(str, values)), file=file,
                 )
         # Catch any errors in code
         except KeyboardInterrupt:
             break
-        # except Exception as e:
-        #     print(e)
