@@ -11,10 +11,12 @@ data:
   folder: "C:/Users/Freddie/Documents/PhD/Data/Stairs/Out"
   # folder: "C:/Users/Freddie/Documents/PhD/Machine-Learning/Output/6_20200722_162100_Stop_State/Model_Source_Data"
   test_train_split: 0.7
+  load_augment: false
 
   percentage_train: 1
 
   x_validation_exclude: "@HP_X_VALIDATION_EXCLUDE"
+  x_validation_include: "@HP_X_VALIDATION_INCLUDE"
 
   data_settings:
     num_timesteps: "@HP_TIMESTEPS"
@@ -103,8 +105,10 @@ fit:
   batch_size: 500
   epochs: 1000
   shuffle: true
+  verbose: 1
 
 save:
+  config: false
   final_model: false
 
   config_dir: "logs/conf/"

@@ -100,7 +100,10 @@ def _parse_hparam_dict(hparam_set) -> dict:
                 if isinstance(item, dict):
                     param_list.append(tuple(_parse_hparam_dict([item])))
                 elif isinstance(item, list):
-                    param_list.append(tuple(_parse_hparam_dict(item)))
+                    if isinstance(item[0], dict):
+                        param_list.append(tuple(_parse_hparam_dict(item)))
+                    else:
+                        param_list.append(item)
                 else:
                     param_list.append(item)
 

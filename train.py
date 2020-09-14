@@ -4,11 +4,11 @@ This file setups and run ML training based of provided config files
 import argparse
 import datetime
 import os
+import math
 import pathlib
 import shutil
 import copy
-import csv
-import sys
+import re
 
 import numpy as np
 import pandas as pd
@@ -106,8 +106,9 @@ def fit_model(
     callbacks: None,
     settings=None,
 ):
-    y = np.argmax(training_data[1], axis=-1)
+    class_weights = np.ones(training_data[1].shape[-1])
 
+    y = np.argmax(training_data[1], axis=-1)
     class_weights = class_weight.compute_class_weight(
         class_weight="balanced", classes=np.unique(y), y=y
     )
@@ -127,87 +128,197 @@ def fit_model(
     return history
 
 
-def get_file_list(data_directory: str, exclude_dir=None) -> list:
-    data_directory = pathlib.Path(data_directory)
-    files = os.listdir(data_directory)
-    data_files = []
+class Data_Preload:
+    def __init__(self, data_folder: str, load_augment=True):
+        self.load_augment = load_augment
 
-    for file in files:
-        if file == exclude_dir:
-            continue
+        self.file_list = []
+        self.file_dict = dict()
 
-        file = data_directory / file
+        self.file_list = self.get_file_list(data_folder)
+        self.preload_data()
 
-        if os.path.isdir(file):
-            data_files.extend(get_file_list(file))
+    def preload_data(self):
+        for file_name in self.file_list:
+            if self.load_augment or not self.is_augmented_data(str(file_name)):
+                print("Loading {}".format(file_name))
+                self.file_dict[file_name] = self.load_file(file_name)
 
-        elif file.exists() and file.suffix == ".csv":
-            data_files.append(file)
+    def exclude_filter(
+        self, filter_dir: str, include_aug: bool, freq_min: int, freq_max: int
+    ) -> list:
+        if filter_dir is None:
+            return self.file_dict.keys()
 
-    return data_files
+        return_list = []
 
+        for file_name in self.file_dict.keys():
+            if not self.check_validity(str(file_name), filter_dir):
+                continue
 
-def load_data(data_files: list, settings: dict, append=False):
-    x = []
-    y = []
+            if (
+                not include_aug
+                and self.is_augmented_data(str(file_name)) is not include_aug
+            ):
+                continue
 
-    i = 1
-    i_max = len(data_files)
+            if not self.check_freq(str(file_name), freq_min, freq_max):
+                continue
 
-    for file in data_files:
-        print(" {} of {} - Opening {} ".format(i, i_max, file), end="\r")
-        i += 1
-        # TODO: parameterise constants
-        new_x, new_y = parse_file(file, **settings)
-        if append:
-            x.append(new_x)
-            y.append(new_y)
+            return_list.append(file_name)
+
+        return return_list
+
+    def include_filter(
+        self, filter_dir: str, include_aug: bool, freq_min: int, freq_max: int
+    ) -> list:
+        if filter_dir is None:
+            return self.file_dict.keys()
+
+        return_list = []
+
+        for file_name in self.file_dict.keys():
+            if self.check_validity(str(file_name), filter_dir):
+                continue
+
+            if self.is_augmented_data(str(file_name)) is not include_aug:
+                continue
+
+            if not self.check_freq(str(file_name), freq_min, freq_max):
+                continue
+
+            return_list.append(file_name)
+
+        return return_list
+
+    def load_data(
+        self,
+        parse_settings: dict,
+        filter_mode=True,  # True = exclude items in list, False = exclude others
+        filter_list=None,  # List
+        include_aug=True,
+        freq_min=None,  # Int
+        freq_max=None,  # Int
+        append=False,
+    ):
+        x = []
+        y = []
+
+        data_files = []
+
+        filter = {
+            "filter_dir": filter_list,
+            "include_aug": include_aug,
+            "freq_min": freq_min,
+            "freq_max": freq_max,
+        }
+
+        if filter_mode:
+            data_files = self.exclude_filter(**filter)
         else:
-            x.extend(new_x)
-            y.extend(new_y)
+            data_files = self.include_filter(**filter)
 
-    return x, y
+        for file in data_files:
+            print("Loaded file {}".format(str(file)))
+            new_x, new_y = self.parse_file(self.file_dict[file], **parse_settings)
+            if append:
+                x.append(new_x)
+                y.append(new_y)
+            else:
+                x.extend(new_x)
+                y.extend(new_y)
 
+        return x, y
 
-def parse_file(
-    filename,
-    label_heading,
-    data_headings,
-    num_timesteps,
-    num_labels,
-    skip,
-    normalize=True,
-):
-    # Read csv file
-    data = pd.read_csv(filename)
+    @staticmethod
+    def check_freq(file_name: str, freq_min: int, freq_max: int) -> bool:
+        if freq_min is None:
+            freq_min = -math.inf
 
-    # Apply one_hot to labels
-    label = data.pop(label_heading)
-    label = tf.compat.v2.one_hot(label, num_labels)
-    label = np.asarray(label)
+        if freq_max is None:
+            freq_max = math.inf
 
-    data = data[data_headings]
+        freq = re.search(r"(?:Aug|Out)_(\d*)", file_name).group(1)
+        freq = int(freq)
 
-    # Divide data up into timestep chunks - offset by skip steps
-    data_frames = []
-    label_frames = []
+        if freq_min <= freq <= freq_max:
+            return True
 
-    i = 0
-    max_start_index = data.shape[0] - num_timesteps
+        return False
 
-    while i < max_start_index:
-        sample_end = i + num_timesteps
+    @staticmethod
+    def is_augmented_data(file_name: str) -> bool:
+        if "Aug_" in file_name:
+            return True
 
-        data_frames.append(data.values[i:sample_end, :])
-        label_frames.append(label[sample_end])
+        return False
 
-        i += skip + 1
+    @staticmethod
+    def check_validity(file_name: str, exclude_dirs) -> bool:
+        for exclude in exclude_dirs:
+            if exclude in file_name:
+                return False
 
-    # Normalise for each data window
-    if normalize:
-        data_frames = tf.keras.utils.normalize(data_frames, axis=1, order=2)
+        return True
 
-    return data_frames, label_frames
+    @staticmethod
+    def get_file_list(data_directory: str) -> list:
+        data_directory = pathlib.Path(data_directory)
+        files = os.listdir(data_directory)
+        data_files = []
+
+        for file in files:
+            file = data_directory / file
+
+            if os.path.isdir(file):
+                data_files.extend(Data_Preload.get_file_list(file))
+
+            elif file.exists() and file.suffix == ".csv":
+                data_files.append(file)
+
+        return data_files
+
+    @staticmethod
+    def load_file(file) -> pd.core.frame.DataFrame:
+        return pd.read_csv(file)
+
+    @staticmethod
+    def parse_file(
+        data,
+        label_heading,
+        data_headings,
+        num_timesteps,
+        num_labels,
+        skip,
+        normalize=True,
+    ):
+        # Apply one_hot to labels
+        label_data = data[label_heading]
+        label_data = tf.compat.v2.one_hot(label_data, num_labels)
+        label_data = np.asarray(label_data)
+
+        input_data = data[data_headings]
+
+        # Divide data up into timestep chunks - offset by skip steps
+        data_frames = []
+        label_frames = []
+
+        i = 0
+        max_start_index = data.shape[0] - num_timesteps
+
+        while i < max_start_index:
+            sample_end = i + num_timesteps
+
+            data_frames.append(input_data.values[i:sample_end, :])
+            label_frames.append(label_data[sample_end])
+
+            i += skip + 1
+
+        # Normalise for each data window
+        if normalize:
+            data_frames = tf.keras.utils.normalize(data_frames, axis=1, order=2)
+
+        return data_frames, label_frames
 
 
 def split_test_train(data, labels, split, percent_train=1.0):
@@ -258,6 +369,44 @@ def save_copy_config(file_dir: str, config_file: str):
     shutil.copy2(config_file.absolute(), file_dir.absolute())
 
 
+def analyse_test_data(y_true, y_pred, num_classes) -> dict:
+    default_keys = [
+        "accuracy",
+        "micro avg_precision",
+        "micro avg_recall",
+        "micro avg_f1-score",
+        "micro avg_support",
+        "macro avg_precision",
+        "macro avg_recall",
+        "macro avg_f1-score",
+        "macro avg_support",
+        "weighted avg_precision",
+        "weighted avg_recall",
+        "weighted avg_f1-score",
+        "weighted avg_support",
+    ]
+    target_names = ["W", "RA", "RD", "SA", "SD", "S"]
+
+    # Analyse performance
+    class_report = skmetrics.classification_report(
+        y_true=y_true,
+        y_pred=y_pred,
+        target_names=target_names,
+        labels=np.arange(num_classes),
+        output_dict=True,
+        zero_division=0,
+    )
+
+    class_report = pd.io.json._normalize.nested_to_record(class_report, sep="_")
+
+    class_report["accuracy"] = skmetrics.accuracy_score(y_true=y_true, y_pred=y_pred)
+
+    # Merge with default headers and return
+    default_value = -1
+    default_result_dict = dict.fromkeys(default_keys, default_value)
+    return {**default_result_dict, **class_report}
+
+
 if __name__ == "__main__":
     args = parse_cli()
 
@@ -274,6 +423,10 @@ if __name__ == "__main__":
 
     # Setup physical devices
     hardware_setup(**_conf["hardware_setup"])
+
+    data_files = Data_Preload(
+        data_folder=_conf["data"]["folder"], load_augment=_conf["data"]["load_augment"]
+    )
 
     # Hyper paramater training
     start_ix_offset = 0
@@ -300,10 +453,25 @@ if __name__ == "__main__":
 
             # Import and process data
             # Filter out participant for cross validation study
-            data_files = get_file_list(
-                conf["data"]["folder"], conf["data"]["x_validation_exclude"]
+            print("*** Training Data ***")
+            raw_data, label_data = data_files.load_data(
+                filter_mode=False,
+                filter_list=conf["data"]["x_validation_exclude"][0],
+                include_aug=False,
+                # freq_min=80,
+                # freq_max=120,
+                parse_settings=conf["data"]["data_settings"],
             )
-            raw_data, label_data = load_data(data_files, conf["data"]["data_settings"])
+
+            print("*** Test Data ***")
+            # Load test data
+            # Load filtered participants
+            test_data, test_label_data = data_files.load_data(
+                filter_mode=False,
+                filter_list=conf["data"]["x_validation_include"][0],
+                include_aug=False,
+                parse_settings=conf["data"]["data_settings"],
+            )
 
             validation_data, train_data = split_test_train(
                 raw_data,
@@ -312,8 +480,12 @@ if __name__ == "__main__":
                 percent_train=conf["data"]["percentage_train"],
             )
 
+            # train_data = (np.asarray(raw_data), np.asarray(label_data))
+            # validation_data = (np.asarray(test_data), np.asarray(test_label_data))
+
             # Set up ML model
             input_shape = train_data[0].shape[-2:]
+            print("Input Shape: {}".format(input_shape))
             model = create_model(
                 layer_definitions=model_conf["layers"], input_shape=input_shape
             )
@@ -383,14 +555,6 @@ if __name__ == "__main__":
                     history_save_dir.__str__(), index=False
                 )
 
-            # Load test data
-            data_files = get_file_list(
-                conf["data"]["folder"] + "/" + conf["data"]["x_validation_exclude"]
-            )
-            test_data, test_label_data = load_data(
-                data_files, conf["data"]["data_settings"]
-            )
-
             # Print data summary
             print("Class values {}".format(tf.math.reduce_sum(label_data, axis=0)))
             print("Train values {}".format(tf.math.reduce_sum(train_data[1], axis=0)))
@@ -404,33 +568,23 @@ if __name__ == "__main__":
 
             # Analyse performance
             actual_class = tf.math.argmax(test_label_data, axis=-1)
-            predicted_classes = tf.math.argmax(model.predict(test_data), axis=-1)
+            predicted_class = tf.math.argmax(model.predict(test_data), axis=-1)
 
-            num_classes = conf["data"]["data_settings"]["num_labels"]
-
-            conf_matrix = tf.math.confusion_matrix(
-                labels=actual_class,
-                predictions=predicted_classes,
-                num_classes=num_classes,
-            )
-            print(conf_matrix)
-
-            target_names = ["W", "SA", "SD", "S"]
-
-            class_report = skmetrics.classification_report(
+            class_report = analyse_test_data(
                 y_true=actual_class,
-                y_pred=predicted_classes,
-                target_names=target_names,
-                labels=np.arange(conf["data"]["data_settings"]["num_labels"]),
-                output_dict=True,
-                zero_division=0,
-            )
-
-            flat_class_report = pd.io.json._normalize.nested_to_record(
-                class_report, sep="_"
+                y_pred=predicted_class,
+                num_classes=conf["data"]["data_settings"]["num_labels"],
             )
 
             # Save results to log files
+            # Make participant exclusion data CSV friendly
+            hparam_set["HP_X_VALIDATION_EXCLUDE"] = "-".join(
+                map(str, hparam_set["HP_X_VALIDATION_EXCLUDE"][0])
+            )
+            hparam_set["HP_X_VALIDATION_INCLUDE"] = "-".join(
+                map(str, hparam_set["HP_X_VALIDATION_INCLUDE"][0])
+            )
+
             header = ["Timestamp", "Sweep", "Sweep Total"]
             header.extend(hparam_set.keys())
 
@@ -446,8 +600,9 @@ if __name__ == "__main__":
                     ",".join(map(str, values)), file=file,
                 )
 
+            # Results
             header = ["Timestamp", "params", "epochs", "train_accuracy", "val_accuracy"]
-            header.extend(flat_class_report.keys())
+            header.extend(class_report.keys())
 
             values = [
                 start_time,
@@ -456,7 +611,7 @@ if __name__ == "__main__":
                 history.history["categorical_accuracy"][-1],
                 history.history["val_categorical_accuracy"][-1],
             ]
-            values.extend(flat_class_report.values())
+            values.extend(class_report.values())
 
             with open(
                 pathlib.Path(conf["hyper_paramaters"]["hparam_result_file"]), mode="a+"
@@ -470,3 +625,4 @@ if __name__ == "__main__":
         # Catch any errors in code
         except KeyboardInterrupt:
             break
+
