@@ -5,39 +5,35 @@ definitions:
     args:
 
   - &LSTM-args
-    units: 0
+    units: 6
     return_sequences: true
     # unroll: false
     stateful: false
 
 layers:
   - <<: *layer
-    type: lstm
-    enabled: "@HP_LAYER_1_UNITS"
+    type: conv1d
     args:
-      <<: *LSTM-args
-      units: "@HP_LAYER_1_UNITS"
+      filters: "@HP_LAYER_1_UNITS"
+      kernel_size: 5
+      activation: relu
 
   - <<: *layer
-    type: lstm
-    enabled: "@HP_LAYER_2_UNITS"
+    type: avgpool1D
     args:
-      <<: *LSTM-args
-      units: "@HP_LAYER_2_UNITS"
+      pool_size: "@HP_LAYER_1_UNITS"
 
   - <<: *layer
-    type: lstm
-    enabled: "@HP_LAYER_3_UNITS"
+    type: conv1d
     args:
-      <<: *LSTM-args
-      units: "@HP_LAYER_3_UNITS"
+      filters: "@HP_LAYER_1_UNITS"
+      kernel_size: 5
+      activation: relu
 
   - <<: *layer
-    type: lstm
-    enabled: "@HP_LAYER_4_UNITS"
+    type: avgpool1D
     args:
-      <<: *LSTM-args
-      units: "@HP_LAYER_4_UNITS"
+      pool_size: "@HP_LAYER_1_UNITS"
 
   - <<: *layer
     type: flatten
@@ -55,4 +51,4 @@ layers:
   - <<: *layer
     type: activation
     args:
-      activation: "@HP_CLASSIFIER_TYPE"
+      activation: "relu"

@@ -27,50 +27,119 @@ definitions:
     steps: 0
     dtype: float
 
+# **** CHECKLIST ****
+# Have you set a unique run id?
+# Have you updated the description?
+
 hparams:
   - <<: *const
-    hparam: "HP_TIMESTEPS"
-    value: 256
+    hparam: "HP_RUN_ID"
+    value: 3
+
+  - <<: *const
+    hparam: "HP_DESCRIPTION"
+    value: "No Transition Dataset softmax"
 
   - <<: *const
     hparam: "HP_NUMBER_ACTIVITIES"
-    value: 4
+    value: 6
 
   - <<: *const
+    hparam: "HP_NUM_SENSORS"
+    value: 1
+
+  - <<: *const
+    hparam: "HP_SENSOR_TYPE"
+    value: "IMU"
+
+  - <<: *const
+    hparam: "HP_SENSOR_LOCATION"
+    value: "Right Ankle"
+
+  - <<: *const
+    hparam: "HP_SAMPLE_FREQUENCY_HZ"
+    value: 100
+
+  - <<: *const
+    hparam: "HP_OPTIMISER"
+    value: "adam"
+
+  - <<: *const
+    hparam: "HP_CLASS_WEIGHTS"
+    value: true
+
+  - <<: *list
     hparam: "HP_DROPPOUT_RATE"
-    value: 0.2
+    items:
+      - 0.5
+
+  - <<: *const
+    hparam: "HP_NORMALISATION"
+    value: true
+
+  - <<: *const
+    hparam: "HP_OUTPUT_FUSION"
+    value: "late_fusion"
+
+  - <<: *const
+    hparam: "HP_CLASSIFIER_TYPE"
+    value: "relu"
+
+  - <<: *const
+    hparam: "HP_DATASET_FOLDER"
+    value:
+      - "C:/Users/Freddie/Documents/PhD/Data/Results/18_20201116_1129_transition_state/Data/100hz_no_tran"
+      # - "C:/Users/Freddie/Documents/PhD/Data/Results/18_20201116_1129_transition_state/Data/100hz_transition"
 
   - <<: *list
     hparam: "HP_X_VALIDATION_EXCLUDE"
     items:
-      - "Participant_01"
-      - "Participant_02"
-      # - "Participant_03"
-      # - "Participant_04"
-      # - "Participant_06"
-      # - "Participant_07"
-      # - "Participant_08"
-      # - "Participant_09"
-      # - "Participant_10"
-      # - "Participant_11"
-      # - "Participant_12"
-      # - "Participant_13"
-      # - "Participant_14"
-      # - "Participant_15"
-      # - "Participant_16"
+      - - "Participant_01"
+        - "Participant_16"
+        - "Participant_03"
+        - "Participant_17"
+      - - "Participant_06"
+        - "Participant_12"
+        - "Participant_09"
+        - "Participant_20"
+      - - "Participant_11"
+        - "Participant_08"
+        - "Participant_14"
+        - "Participant_04"
+        - "Participant_22"
+      - - "Participant_02"
+        - "Participant_18"
+        - "Participant_15"
+        - "Participant_19"
+        - "Participant_07"
+      - - "Participant_21"
+        - "Participant_13"
+        - "Participant_05"
+        - "Participant_10"
+
+  - <<: *list
+    hparam: "HP_TIMESTEPS"
+    items:
+      - 128
 
   - <<: *set
-    hparam: "HP_LAYER_SIZE"
     items:
-      - - <<: *const
+      - - <<: *list
           hparam: "HP_LAYER_1_UNITS"
-          value: 32
-        - <<: *const
+          items:
+            - 6
+
+        - <<: *list
           hparam: "HP_LAYER_2_UNITS"
-          value: 32
-        - <<: *const
+          items:
+            - 0
+
+        - <<: *list
           hparam: "HP_LAYER_3_UNITS"
-          value: 32
-        - <<: *const
+          items:
+            - 0
+
+        - <<: *list
           hparam: "HP_LAYER_4_UNITS"
-          value: 32
+          items:
+            - 0

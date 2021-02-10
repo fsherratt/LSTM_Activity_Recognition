@@ -5,66 +5,123 @@ import pathlib
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-import yaml
 
-from train import get_file_list, load_data, parse_file, hardware_setup
+import tensorflow as tf
+
+from train import Data_Preload, load_config, label_to_one_hot, split_test_train
 
 
 if __name__ == "__main__":
-    hardware_setup(use_gpu=True, random_seed=0)
+    LOG_DIR = pathlib.Path("logs")
+    MODEL_DIR = LOG_DIR / "model"
+    CONF_DIR = LOG_DIR / "conf"
+    DATA_DIR = pathlib.Path(
+        (
+            "C:/Users/Freddie/Documents/PhD/Data/Results/"
+            "18_20201116_1129_transition_state/Data/100hz_no_tran"
+            # "18_20201116_1129_transition_state/Data/100hz_transition"  # Transition state will be excluded!
+        ),
+    )
+    SAVE_DIR = pathlib.Path("result")
 
-    # Load data file
-    data_dir = "C:/Users/Freddie/Documents/PhD/Machine-Learning/Output/9_20200723_110700_Stop_State_No_Tran_No_Normalize/Predict_Data/"
-    data_dir = pathlib.Path(data_dir)
+    # Preload data
+    data_files = Data_Preload(data_folder=DATA_DIR, load_augment=False, verbose=False,)
 
-    file_list = get_file_list(data_dir)
-    if not file_list:
-        Exception("No files found")
+    model_files = Data_Preload.get_file_list(str(MODEL_DIR), ".pb")
 
-    # Todo load this from config file
-    settings = {
-        "num_timesteps": 128,
-        "label_heading": "activity",
-        "normalize": False,
-        "data_headings": [
-            "r_ankle_accel_x",
-            "r_ankle_accel_y",
-            "r_ankle_accel_z",
-            "r_ankle_gyro_x",
-            "r_ankle_gyro_y",
-            "r_ankle_gyro_z",
-            "l_ankle_accel_x",
-            "l_ankle_accel_y",
-            "l_ankle_accel_z",
-            "l_ankle_gyro_x",
-            "l_ankle_gyro_y",
-            "l_ankle_gyro_z",
-        ],
-        "num_labels": 4,
-        "skip": 0,
-    }
+    for mdl_file in model_files:
+        np.random.seed(1)
+        mdl_name = mdl_file.parent.name
 
-    data, label = load_data(file_list, settings, append=True)
+        print("*** Model {} ***".format(mdl_name))
 
-    data_pairs = zip(file_list, data)
+        print("*** Loading Config ***")
+        conf = load_config(str(CONF_DIR / mdl_name / "config.yaml"))
 
-    # Load tensorflow model
-    print("Loading model")
-    model_dir = "C:/Users/Freddie/Documents/PhD/Machine-Learning/Output/9_20200723_110700_Stop_State_No_Tran_No_Normalize/Model/model/"
-    model_dir = pathlib.Path(model_dir).__str__()
+        exclude = conf["data"]["x_validation_exclude"]
+        settings = conf["data"]["data_settings"]
+        settings["skip"] = 10
 
-    model = tf.keras.models.load_model(model_dir)
-    print("Model loaded")
-    model.summary()
+        print(settings["data_headings"])
+        print(settings["label_mapping"])
+        # Load model
+        print("*** Loading model ***")
+        model = tf.keras.models.load_model(str(mdl_file.parent))
 
-    # Pass timeseries data through model and store result
-    for f, d in data_pairs:
-        d = np.asarray(d)
-        result = model.predict(d)
+        train_data, train_label = data_files.load_data(
+            parse_settings=settings,
+            filter_mode=True,
+            filter_list=exclude,
+            include_aug=False,
+        )
+        # _, train_data = split_test_train(
+        #     train_data, train_label, split=1.0, percent_train=1.0, max_difference=None,
+        # )
+        # train_label = train_data[1]
+        # train_data = train_data[0]
+        train_label = label_to_one_hot(
+            train_label, settings["num_labels"], settings["label_mapping"],
+        )
 
-        # Save results to CSV file
-        save_dir = "result/"
-        save_file = pathlib.Path(save_dir + "Predict_" + f.stem + ".csv").__str__()
-        print("Saving: {}".format(save_file))
-        np.savetxt(save_file, result, delimiter=",")
+        # Test Data
+        test_data, test_label = data_files.load_data(
+            parse_settings=settings,
+            filter_mode=False,
+            filter_list=exclude,
+            include_aug=False,
+        )
+        # _, test_data = split_test_train(
+        #     test_data, test_label, split=1.0, percent_train=1.0, max_difference=None,
+        # )
+        # test_label = test_data[1]
+        # test_data = test_data[0]
+        test_label = label_to_one_hot(
+            test_label, settings["num_labels"], settings["label_mapping"],
+        )
+
+        # Run data through model
+        print("*** Generating Confusion Matrices ***")
+
+        print("*** Train Predictions ***")
+        actual_class = tf.math.argmax(train_label, axis=-1)
+        train_pred = model.predict(train_data)
+        predicted_class = tf.math.argmax(train_pred, axis=-1)
+        acc = (
+            sum(np.asarray(predicted_class) == np.asarray(actual_class))
+            / predicted_class.shape[0]
+        )
+
+        print("*** Training Confusion Matrix ***")
+        train_conf_matrix = tf.math.confusion_matrix(
+            labels=actual_class,
+            predictions=predicted_class,
+            num_classes=conf["data"]["data_settings"]["num_labels"],
+        )
+        print(train_conf_matrix)
+        print("Accuracy: {}".format(acc))
+        pd.DataFrame(np.asarray(train_conf_matrix)).to_csv(
+            str(SAVE_DIR / (mdl_name + "_nt_train_conf.csv"))
+        )
+
+        print("*** Test Predictions ***")
+        actual_class = tf.math.argmax(test_label, axis=-1)
+        test_pred = model.predict(test_data)
+        predicted_class = tf.math.argmax(test_pred, axis=-1)
+        acc = (
+            sum(np.asarray(predicted_class) == np.asarray(actual_class))
+            / predicted_class.shape[0]
+        )
+
+        print("*** Test Confusion Matrix ***")
+        test_conf_matrix = tf.math.confusion_matrix(
+            labels=actual_class,
+            predictions=predicted_class,
+            num_classes=conf["data"]["data_settings"]["num_labels"],
+        )
+        print(test_conf_matrix)
+        print("Accuracy: {}".format(acc))
+        pd.DataFrame(np.asarray(test_conf_matrix)).to_csv(
+            str(SAVE_DIR / (mdl_name + "_nt_test_conf.csv"))
+        )
+
+        print("*-------------------------------------------------------------*")

@@ -23,6 +23,7 @@ import hparam_load
 
 def hardware_setup(use_gpu: True, random_seed: 0):
     np.random.seed(random_seed)
+    tf.random.set_seed(random_seed)
 
     if use_gpu:
         try:
@@ -60,10 +61,16 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
     # Add in layer type definitions here
     layer_dict = {
         "lstm": tf.keras.layers.LSTM,
+        "lstm_peephole": tf.keras.experimental.PeepholeLSTMCell,
+        "bidirectional": tf.keras.layers.Bidirectional,
         "dense": tf.keras.layers.Dense,
         "activation": tf.keras.layers.Activation,
         "dropout": tf.keras.layers.Dropout,
-        "reshape": tf.keras.layers.Reshape,
+        "flatten": tf.keras.layers.Flatten,
+        "conv1d": tf.keras.layers.Conv1D,
+        "conv2d": tf.keras.layers.Conv2D,
+        "maxpool1D": tf.keras.layers.MaxPooling1D,
+        "avgpool1D": tf.keras.layers.AvgPool1D,
     }
 
     # Add input definition to first layer
@@ -73,13 +80,13 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
 
     for layer in layer_definitions:
         if layer["enabled"]:
-            # Deal with the fact that we tensorflow must have a final dimension
-            if layer["type"] == "reshape":
-                if layer["args"]["target_shape"][0] == None:
-                    layer["args"]["target_shape"][0] = np.prod(
-                        tf_model.layers[-1].output.shape[1:]
-                    )
+            if layer["type"] == "bidirectional":
+                layer["args"]["layer"] = layer_dict[layer["args"]["layer"]["type"]](
+                    **layer["args"]["layer"]["args"]
+                )
 
+            if layer["args"] is None:
+                layer["args"] = {}
             tf_model.add(layer_dict[layer["type"]](**layer["args"]))
 
     return tf_model
@@ -129,19 +136,23 @@ def fit_model(
 
 
 class Data_Preload:
-    def __init__(self, data_folder: str, load_augment=True):
+    def __init__(self, data_folder: str, load_augment=True, verbose=True):
         self.load_augment = load_augment
 
+        self.verbose = verbose
+
         self.file_list = []
+        self.extension = ".csv"
         self.file_dict = dict()
 
-        self.file_list = self.get_file_list(data_folder)
+        self.file_list = self.get_file_list(data_folder, self.extension)
         self.preload_data()
 
     def preload_data(self):
         for file_name in self.file_list:
             if self.load_augment or not self.is_augmented_data(str(file_name)):
-                print("Loading {}".format(file_name))
+                if self.verbose:
+                    print("Loading {}".format(file_name))
                 self.file_dict[file_name] = self.load_file(file_name)
 
     def exclude_filter(
@@ -194,7 +205,7 @@ class Data_Preload:
     def load_data(
         self,
         parse_settings: dict,
-        filter_mode=True,  # True = exclude items in list, False = exclude others
+        filter_mode=True,  # True = exclude items in list, False = only load list
         filter_list=None,  # List
         include_aug=True,
         freq_min=None,  # Int
@@ -219,8 +230,10 @@ class Data_Preload:
             data_files = self.include_filter(**filter)
 
         for file in data_files:
-            print("Loaded file {}".format(str(file)))
+            if self.verbose:
+                print("Loaded file {}".format(str(file)))
             new_x, new_y = self.parse_file(self.file_dict[file], **parse_settings)
+
             if append:
                 x.append(new_x)
                 y.append(new_y)
@@ -228,6 +241,8 @@ class Data_Preload:
                 x.extend(new_x)
                 y.extend(new_y)
 
+        x = np.asarray(x)
+        y = np.asarray(y)
         return x, y
 
     @staticmethod
@@ -262,7 +277,7 @@ class Data_Preload:
         return True
 
     @staticmethod
-    def get_file_list(data_directory: str) -> list:
+    def get_file_list(data_directory: str, extension: str) -> list:
         data_directory = pathlib.Path(data_directory)
         files = os.listdir(data_directory)
         data_files = []
@@ -271,9 +286,9 @@ class Data_Preload:
             file = data_directory / file
 
             if os.path.isdir(file):
-                data_files.extend(Data_Preload.get_file_list(file))
+                data_files.extend(Data_Preload.get_file_list(file, extension))
 
-            elif file.exists() and file.suffix == ".csv":
+            elif file.exists() and file.suffix == extension:
                 data_files.append(file)
 
         return data_files
@@ -290,27 +305,44 @@ class Data_Preload:
         num_timesteps,
         num_labels,
         skip,
-        normalize=True,
+        normalize,
+        label_mapping=None,
     ):
-        # Apply one_hot to labels
-        label_data = data[label_heading]
-        label_data = tf.compat.v2.one_hot(label_data, num_labels)
-        label_data = np.asarray(label_data)
-
+        labels_data = data[label_heading]
+        labels_data = np.asarray(labels_data, dtype=np.int32)
         input_data = data[data_headings]
+        input_data = np.asarray(input_data, dtype=np.float32)
 
-        # Divide data up into timestep chunks - offset by skip steps
+        # ----------------------------------------------------------------------------------
+        # Output filter and mapping
+        if label_mapping is not None:
+            included_activites = np.asarray(list(label_mapping.keys()))
+
+            # Filter
+            filter_list = np.isin(labels_data, included_activites)
+            labels_data = labels_data[filter_list]
+            input_data = input_data[filter_list]
+
+            # Map data based on dict
+            # labels_data = list(map(lambda x: label_mapping[x], labels_data))
+        # ----------------------------------------------------------------------------------
+
+        # Apply one_hot to labels
+        # labels_data = tf.one_hot(labels_data, num_labels)
+        labels_data = np.asarray(labels_data, dtype=np.int8)
+        input_data = np.asarray(input_data, dtype=np.float32)
+
         data_frames = []
         label_frames = []
 
         i = 0
-        max_start_index = data.shape[0] - num_timesteps
+        max_start_index = labels_data.shape[0] - num_timesteps
 
         while i < max_start_index:
             sample_end = i + num_timesteps
 
-            data_frames.append(input_data.values[i:sample_end, :])
-            label_frames.append(label_data[sample_end])
+            data_frames.append(input_data[i:sample_end, :])
+            label_frames.append(labels_data[sample_end])
 
             i += skip + 1
 
@@ -321,28 +353,54 @@ class Data_Preload:
         return data_frames, label_frames
 
 
-def split_test_train(data, labels, split, percent_train=1.0):
-    data = np.asarray(data)
-    labels = np.asarray(labels)
+# Percentage train allows
+def split_test_train(data, labels, split, percent_train=1.0, max_difference=1.5):
+    train_rows = []
+    test_rows = []
 
-    samples_available = len(labels)
-    train_test_split = int(split * samples_available)
+    # Do something to limit max difference between labels
+    unique_labels, label_count = np.unique(labels, return_counts=True)
+    # Ensure that we have some data to train with
+    new_label_count = label_count[label_count > 0.5 * np.median(label_count)]
+    if len(label_count) != len(new_label_count):
+        print("!!!!!Quantiy of labels is too varied!!!!!")
 
-    perms = np.random.permutation(data.shape[0])
+    min_labels = np.min(new_label_count)
 
-    train_perms = np.random.permutation(int(train_test_split * percent_train))
-    train_perms = perms[train_perms]
+    for i in range(unique_labels.shape[0]):
+        # Limit to 50% difference
+        if max_difference is not None:
+            if label_count[i] > max_difference * min_labels:
+                label_count[i] = max_difference * min_labels
 
+        train_test_split = int(split * label_count[i])
+
+        label_rows = np.where(labels == unique_labels[i])[0]
+        perms = np.random.permutation(label_count[i])
+
+        train_rows.extend(label_rows[perms[: int(train_test_split * percent_train)]])
+        test_rows.extend(label_rows[perms[train_test_split:]])
+
+    print(label_count)
     train = (
-        data.take(perms[train_perms], axis=0),
-        labels.take(perms[train_perms], axis=0),
+        data.take(train_rows, axis=0),
+        labels.take(train_rows, axis=0),
     )
     test = (
-        data.take(perms[train_test_split:], axis=0),
-        labels.take(perms[train_test_split:], axis=0),
+        data.take(test_rows, axis=0),
+        labels.take(test_rows, axis=0),
     )
 
     return test, train
+
+
+def label_to_one_hot(labels, num_activities, label_mapping=None):
+    if label_mapping is not None:
+        labels = list(map(lambda x: label_mapping[x], labels))
+
+    labels = tf.one_hot(labels, num_activities)
+
+    return np.asarray(labels, dtype=np.int8)
 
 
 def tensorboard_callback(settings, save_dir):
@@ -358,15 +416,16 @@ def save_model_callback(settings, save_path):
     return tf.keras.callbacks.ModelCheckpoint(filepath=save_path.__str__(), **settings)
 
 
-def save_copy_config(file_dir: str, config_file: str):
+def save_copy_config(file_dir: str, config_file: str, config: dict):
     config_file = pathlib.Path(config_file)
     file_dir = pathlib.Path(file_dir)
 
     if not os.path.exists(file_dir):
         os.mkdir(file_dir)
 
-    file_dir = file_dir / config_file.name
-    shutil.copy2(config_file.absolute(), file_dir.absolute())
+    file_path = file_dir / config_file.name
+    with open(file_path, "w") as file:
+        file.write(yaml.dump(config))
 
 
 def analyse_test_data(y_true, y_pred, num_classes) -> dict:
@@ -425,7 +484,9 @@ if __name__ == "__main__":
     hardware_setup(**_conf["hardware_setup"])
 
     data_files = Data_Preload(
-        data_folder=_conf["data"]["folder"], load_augment=_conf["data"]["load_augment"]
+        data_folder=_conf["data"]["folder"],
+        load_augment=_conf["data"]["load_augment"],
+        verbose=_conf["data"]["verbose"],
     )
 
     # Hyper paramater training
@@ -453,22 +514,9 @@ if __name__ == "__main__":
 
             # Import and process data
             # Filter out participant for cross validation study
-            print("*** Training Data ***")
             raw_data, label_data = data_files.load_data(
-                filter_mode=False,
-                filter_list=conf["data"]["x_validation_exclude"][0],
-                include_aug=False,
-                # freq_min=80,
-                # freq_max=120,
-                parse_settings=conf["data"]["data_settings"],
-            )
-
-            print("*** Test Data ***")
-            # Load test data
-            # Load filtered participants
-            test_data, test_label_data = data_files.load_data(
-                filter_mode=False,
-                filter_list=conf["data"]["x_validation_include"][0],
+                filter_mode=True,
+                filter_list=conf["data"]["x_validation_exclude"],
                 include_aug=False,
                 parse_settings=conf["data"]["data_settings"],
             )
@@ -478,7 +526,49 @@ if __name__ == "__main__":
                 label_data,
                 split=conf["data"]["test_train_split"],
                 percent_train=conf["data"]["percentage_train"],
+                max_difference=conf["data"]["max_label_difference"],
             )
+
+            # Load test data
+            # Load filtered participants
+            test_data, test_label_data = data_files.load_data(
+                filter_mode=False,
+                filter_list=conf["data"]["x_validation_exclude"],
+                include_aug=False,
+                parse_settings=conf["data"]["data_settings"],
+            )
+
+            # Validation Data
+            validation_data_labels = label_to_one_hot(
+                validation_data[1],
+                conf["data"]["data_settings"]["num_labels"],
+                conf["data"]["data_settings"]["label_mapping"],
+            )
+            validation_data = (validation_data[0], validation_data_labels)
+
+            # Test Data
+            train_data_labels = label_to_one_hot(
+                train_data[1],
+                conf["data"]["data_settings"]["num_labels"],
+                conf["data"]["data_settings"]["label_mapping"],
+            )
+            train_data = (train_data[0], train_data_labels)
+
+            # Test Data
+            _, test_data = split_test_train(
+                test_data,
+                test_label_data,
+                split=1,
+                percent_train=conf["data"]["percentage_train"],
+                max_difference=conf["data"]["max_label_difference"],
+            )
+
+            test_label_data = label_to_one_hot(
+                test_data[1],
+                conf["data"]["data_settings"]["num_labels"],
+                conf["data"]["data_settings"]["label_mapping"],
+            )
+            test_data = test_data[0]
 
             # train_data = (np.asarray(raw_data), np.asarray(label_data))
             # validation_data = (np.asarray(test_data), np.asarray(test_label_data))
@@ -489,6 +579,11 @@ if __name__ == "__main__":
             model = create_model(
                 layer_definitions=model_conf["layers"], input_shape=input_shape
             )
+
+            #
+            dense = model.layers[1]
+            print(dense.get_weights())
+
             loss_func = loss_function(
                 conf["loss_func"]["type"], conf["loss_func"]["settings"]
             )
@@ -529,12 +624,11 @@ if __name__ == "__main__":
                 )
 
             if conf["save"]["config"]:
+                save_folder = conf["save"]["config_dir"] + start_time
+
+                save_copy_config(save_folder, "config.yaml", conf)
                 save_copy_config(
-                    conf["save"]["config_dir"] + start_time, args.config_file
-                )
-                save_copy_config(
-                    conf["save"]["config_dir"] + start_time,
-                    conf["model"]["config_file"],
+                    save_folder, "model.yaml", model_conf,
                 )
 
             # Run training/learning algorithim
@@ -556,72 +650,114 @@ if __name__ == "__main__":
                 )
 
             # Print data summary
-            print("Class values {}".format(tf.math.reduce_sum(label_data, axis=0)))
-            print("Train values {}".format(tf.math.reduce_sum(train_data[1], axis=0)))
             print(
-                "Val values {}".format(tf.math.reduce_sum(validation_data[1], axis=0))
+                "Class values {}".format(
+                    tf.math.reduce_sum(label_data.astype(np.int32), axis=0)
+                )
             )
-            print("Test values {}".format(tf.math.reduce_sum(test_label_data, axis=0)))
+            print(
+                "Train values {}".format(
+                    tf.math.reduce_sum(train_data[1].astype(np.int32), axis=0)
+                )
+            )
+            print(
+                "Val values {}".format(
+                    tf.math.reduce_sum(validation_data[1].astype(np.int32), axis=0)
+                )
+            )
+            print(
+                "Test values {}".format(
+                    tf.math.reduce_sum(test_label_data.astype(np.int32), axis=0)
+                )
+            )
 
             test_data = np.asarray(test_data)
             test_label_data = np.asarray(test_label_data)
 
-            # Analyse performance
-            actual_class = tf.math.argmax(test_label_data, axis=-1)
-            predicted_class = tf.math.argmax(model.predict(test_data), axis=-1)
+            # Train - Confusion Matrix
+            actual_class = tf.math.argmax(validation_data[1], axis=-1)
+            predicted_class = tf.math.argmax(model.predict(validation_data[0]), axis=-1)
 
-            class_report = analyse_test_data(
-                y_true=actual_class,
-                y_pred=predicted_class,
+            print("*** Validation Confusion Matrix ***")
+            conf_matrix = tf.math.confusion_matrix(
+                labels=actual_class,
+                predictions=predicted_class,
                 num_classes=conf["data"]["data_settings"]["num_labels"],
             )
+            print(conf_matrix)
 
-            # Save results to log files
-            # Make participant exclusion data CSV friendly
-            hparam_set["HP_X_VALIDATION_EXCLUDE"] = "-".join(
-                map(str, hparam_set["HP_X_VALIDATION_EXCLUDE"][0])
+            # Test - Confusion matrix
+            actual_class = tf.math.argmax(test_label_data, axis=-1)
+            pred = model.predict(test_data)
+            predicted_class = tf.math.argmax(pred, axis=-1)
+
+            print("*** Test Confusion Matrix ***")
+            conf_matrix = tf.math.confusion_matrix(
+                labels=actual_class,
+                predictions=predicted_class,
+                num_classes=conf["data"]["data_settings"]["num_labels"],
             )
-            hparam_set["HP_X_VALIDATION_INCLUDE"] = "-".join(
-                map(str, hparam_set["HP_X_VALIDATION_INCLUDE"][0])
-            )
+            print(conf_matrix)
 
-            header = ["Timestamp", "Sweep", "Sweep Total"]
-            header.extend(hparam_set.keys())
-
-            values = [start_time, ix + 1, len(hparams)]
-            values.extend(hparam_set.values())
-            with open(
-                pathlib.Path(conf["hyper_paramaters"]["hparam_log_file"]), mode="a+"
-            ) as file:
-                print(
-                    ",".join(map(str, header)), file=file,
-                )
-                print(
-                    ",".join(map(str, values)), file=file,
+            if conf["hyper_paramaters"]["save_hparam"]:
+                # Analyse performance
+                class_report = analyse_test_data(
+                    y_true=actual_class,
+                    y_pred=predicted_class,
+                    num_classes=conf["data"]["data_settings"]["num_labels"],
                 )
 
-            # Results
-            header = ["Timestamp", "params", "epochs", "train_accuracy", "val_accuracy"]
-            header.extend(class_report.keys())
-
-            values = [
-                start_time,
-                model.count_params(),
-                history.epoch[-1] + 1,
-                history.history["categorical_accuracy"][-1],
-                history.history["val_categorical_accuracy"][-1],
-            ]
-            values.extend(class_report.values())
-
-            with open(
-                pathlib.Path(conf["hyper_paramaters"]["hparam_result_file"]), mode="a+"
-            ) as file:
-                print(
-                    ",".join(map(str, header)), file=file,
+                # Save results to log files
+                # Make participant exclusion data CSV friendly
+                hparam_set["HP_X_VALIDATION_EXCLUDE"] = "-".join(
+                    map(str, hparam_set["HP_X_VALIDATION_EXCLUDE"])
                 )
-                print(
-                    ",".join(map(str, values)), file=file,
-                )
+
+                header = ["Timestamp", "Sweep", "Sweep Total"]
+                header.extend(hparam_set.keys())
+
+                values = [start_time, ix + 1, len(hparams)]
+                values.extend(hparam_set.values())
+                with open(
+                    pathlib.Path(conf["hyper_paramaters"]["hparam_log_file"]), mode="a+"
+                ) as file:
+                    print(
+                        ",".join(map(str, header)), file=file,
+                    )
+                    print(
+                        ",".join(map(str, values)), file=file,
+                    )
+
+                # Results
+                header = [
+                    "Timestamp",
+                    "params",
+                    "epochs",
+                    "train_accuracy",
+                    "val_accuracy",
+                ]
+                header.extend(class_report.keys())
+
+                values = [
+                    start_time,
+                    model.count_params(),
+                    history.epoch[-1] + 1,
+                    history.history["categorical_accuracy"][-1],
+                    history.history["val_categorical_accuracy"][-1],
+                ]
+                values.extend(class_report.values())
+
+                with open(
+                    pathlib.Path(conf["hyper_paramaters"]["hparam_result_file"]),
+                    mode="a+",
+                ) as file:
+                    print(
+                        ",".join(map(str, header)), file=file,
+                    )
+                    print(
+                        ",".join(map(str, values)), file=file,
+                    )
+
         # Catch any errors in code
         except KeyboardInterrupt:
             break

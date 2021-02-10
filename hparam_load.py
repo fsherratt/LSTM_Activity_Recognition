@@ -178,13 +178,13 @@ def set_hparams(hparam_dict, param_config):
 
 
 if __name__ == "__main__":
-    _hparam_path = pathlib.Path("conf\\hparam.yaml")
+    _hparam_path = pathlib.Path("Desktop\test.yaml")
     _hparam_sets = load_hparam_set(_hparam_path)
 
-    _model_path = pathlib.Path("conf\\model.yaml")
-    with open(_model_path) as _file:
-        _og_config = yaml.full_load(_file)
+    # _model_path = pathlib.Path("conf\\model.yaml")
+    # with open(_model_path) as _file:
+    #     _og_config = yaml.full_load(_file)
 
-    for _param_set in _hparam_sets:
-        _config = copy.deepcopy(_og_config)
-        _config = set_hparams(_param_set, _config)
+    # for _param_set in _hparam_sets:
+    #     _config = copy.deepcopy(_og_config)
+    #     _config = set_hparams(_param_set, _config)
