@@ -66,7 +66,10 @@ callbacks:
   tensorboard:
     histogram_freq: 1
 
-  use_early_stopping: true
+  use_early_stopping_threshold: true
+  early_stopping_threshold: 0.7
+
+  use_early_stopping: false
   early_stopping:
     monitor: "val_loss"
     verbose: 1
@@ -82,7 +85,8 @@ fit:
   batch_size: 2000
   epochs: 1000
   shuffle: true
-  verbose: 2
+  steps_per_epoch: 5 # 10,000 steps per epoch
+  # verbose: 2
 
 save:
   config: true

@@ -19,6 +19,7 @@ from sklearn import metrics as skmetrics
 from sklearn.utils import class_weight
 
 import hparam_load
+from earlyStoppingCallback import EarlyStoppingCallback
 
 
 def hardware_setup(use_gpu: True, random_seed: 0):
@@ -92,9 +93,9 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
     return tf_model
 
 
-def loss_function(type, settings) -> tf.keras.losses.Loss:
+def loss_function(loss_type, settings) -> tf.keras.losses.Loss:
     loss_funcs = {"categorical_crossentropy": tf.keras.losses.CategoricalCrossentropy}
-    return loss_funcs[type](**settings)
+    return loss_funcs[loss_type](**settings)
 
 
 def compile_model(
@@ -113,17 +114,18 @@ def fit_model(
     callbacks: None,
     settings=None,
 ):
-    class_weights = np.ones(training_data[1].shape[-1])
+    # class_weight_val = np.ones(training_data[1].shape[-1])
 
     y = np.argmax(training_data[1], axis=-1)
-    class_weights = class_weight.compute_class_weight(
+    class_weight_val = class_weight.compute_class_weight(
         class_weight="balanced", classes=np.unique(y), y=y
     )
+    class_weights = dict(zip(np.unique(y), class_weight_val))
 
     print("Class Weights: ", end="")
     print(class_weights)
 
-    history = tf_model.fit(
+    rtn_history = tf_model.fit(
         x=training_data[0],
         y=training_data[1],
         validation_data=validation_data,
@@ -132,7 +134,7 @@ def fit_model(
         **settings,
     )
 
-    return history
+    return rtn_history
 
 
 class Data_Preload:
@@ -407,6 +409,11 @@ def tensorboard_callback(settings, save_dir):
     return tf.keras.callbacks.TensorBoard(log_dir=save_dir, **settings)
 
 
+def early_stopping_threshold_callback(stop_threshold):
+    # Custom callback to stop training after validation threshold reached
+    return EarlyStoppingCallback(stop_threshold=0.7)
+
+
 def early_stopping_callback(settings):
     return tf.keras.callbacks.EarlyStopping(**settings)
 
@@ -529,15 +536,6 @@ if __name__ == "__main__":
                 max_difference=conf["data"]["max_label_difference"],
             )
 
-            # Load test data
-            # Load filtered participants
-            test_data, test_label_data = data_files.load_data(
-                filter_mode=False,
-                filter_list=conf["data"]["x_validation_exclude"],
-                include_aug=False,
-                parse_settings=conf["data"]["data_settings"],
-            )
-
             # Validation Data
             validation_data_labels = label_to_one_hot(
                 validation_data[1],
@@ -555,20 +553,37 @@ if __name__ == "__main__":
             train_data = (train_data[0], train_data_labels)
 
             # Test Data
-            _, test_data = split_test_train(
-                test_data,
-                test_label_data,
-                split=1,
-                percent_train=conf["data"]["percentage_train"],
-                max_difference=conf["data"]["max_label_difference"],
-            )
+            # !!!--- New from Feb 2021 ---!!!
+            # Load filtered participants individually?
+            test_subjects = conf["data"]["x_validation_exclude"]
+            test_data = {}
+            test_label_data = {}
 
-            test_label_data = label_to_one_hot(
-                test_data[1],
-                conf["data"]["data_settings"]["num_labels"],
-                conf["data"]["data_settings"]["label_mapping"],
-            )
-            test_data = test_data[0]
+            for subject in conf["data"]["x_validation_exclude"]:
+                print("Loading Subject: {}".format(subject))
+                test_data_tmp, test_label_data_tmp = data_files.load_data(
+                    filter_mode=False,
+                    filter_list=[subject],
+                    include_aug=False,
+                    parse_settings=conf["data"]["data_settings"],
+                )
+
+                _, test_data_tmp = split_test_train(
+                    test_data_tmp,
+                    test_label_data_tmp,
+                    split=1,
+                    percent_train=conf["data"]["percentage_train"],
+                    max_difference=None,
+                )
+
+                test_label_data_tmp = label_to_one_hot(
+                    test_data_tmp[1],
+                    conf["data"]["data_settings"]["num_labels"],
+                    conf["data"]["data_settings"]["label_mapping"],
+                )
+
+                test_data[subject] = test_data_tmp[0]
+                test_label_data[subject] = test_label_data_tmp
 
             # train_data = (np.asarray(raw_data), np.asarray(label_data))
             # validation_data = (np.asarray(test_data), np.asarray(test_label_data))
@@ -608,6 +623,13 @@ if __name__ == "__main__":
                     )
                 )
 
+            if conf["callbacks"]["use_early_stopping_threshold"]:
+                callback_list.append(
+                    early_stopping_threshold_callback(
+                        stop_threshold=conf["callbacks"]["early_stopping_threshold"]
+                    )
+                )
+
             if conf["callbacks"]["use_early_stopping"]:
                 callback_list.append(
                     early_stopping_callback(
@@ -622,6 +644,13 @@ if __name__ == "__main__":
                         save_path=model_save_dir,
                     )
                 )
+
+            # Print list of classes
+            print(
+                "Using callbacks: {}".format(
+                    ", ".join([x.__class__.__name__ for x in callback_list])
+                )
+            )
 
             if conf["save"]["config"]:
                 save_folder = conf["save"]["config_dir"] + start_time
@@ -665,14 +694,6 @@ if __name__ == "__main__":
                     tf.math.reduce_sum(validation_data[1].astype(np.int32), axis=0)
                 )
             )
-            print(
-                "Test values {}".format(
-                    tf.math.reduce_sum(test_label_data.astype(np.int32), axis=0)
-                )
-            )
-
-            test_data = np.asarray(test_data)
-            test_label_data = np.asarray(test_label_data)
 
             # Train - Confusion Matrix
             actual_class = tf.math.argmax(validation_data[1], axis=-1)
@@ -687,17 +708,32 @@ if __name__ == "__main__":
             print(conf_matrix)
 
             # Test - Confusion matrix
-            actual_class = tf.math.argmax(test_label_data, axis=-1)
-            pred = model.predict(test_data)
-            predicted_class = tf.math.argmax(pred, axis=-1)
-
+            # !!!--- New from Feb 2021 ---!!!
+            # Work through each participant and generate confusion matrices
             print("*** Test Confusion Matrix ***")
-            conf_matrix = tf.math.confusion_matrix(
-                labels=actual_class,
-                predictions=predicted_class,
-                num_classes=conf["data"]["data_settings"]["num_labels"],
-            )
-            print(conf_matrix)
+            for subject in test_subjects:
+                tmp_test_data = np.asarray(test_data[subject])
+                tmp_test_label_data = np.asarray(test_label_data[subject])
+
+                print("Subject: {}".format(subject))
+                print(
+                    "Test values {}".format(
+                        tf.math.reduce_sum(tmp_test_label_data.astype(np.int32), axis=0)
+                    )
+                )
+
+                actual_class = tf.math.argmax(tmp_test_label_data, axis=-1)
+                pred = model.predict(tmp_test_data)
+
+                predicted_class = tf.math.argmax(pred, axis=-1)
+
+                conf_matrix = tf.math.confusion_matrix(
+                    labels=actual_class,
+                    predictions=predicted_class,
+                    num_classes=conf["data"]["data_settings"]["num_labels"],
+                )
+                print(conf_matrix)
+                print("*------------------*")
 
             if conf["hyper_paramaters"]["save_hparam"]:
                 # Analyse performance
