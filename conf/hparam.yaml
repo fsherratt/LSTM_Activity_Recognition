@@ -38,7 +38,7 @@ hparams:
 
   - <<: *const
     hparam: "HP_DESCRIPTION"
-    value: "No Transition Dataset softmax"
+    value: "Validation of new data processing methods - OG dataset"
 
   - <<: *const
     hparam: "HP_NUMBER_ACTIVITIES"
@@ -88,15 +88,14 @@ hparams:
   - <<: *const
     hparam: "HP_DATASET_FOLDER"
     value:
-      - "C:/Users/Freddie/Documents/PhD/Data/Results/18_20201116_1129_transition_state/Data/100hz_no_tran"
-      # - "C:/Users/Freddie/Documents/PhD/Data/Results/18_20201116_1129_transition_state/Data/100hz_transition"
+      - "C:/Users/Freddie/Documents/PhD/Data/Stairs/Out_OG"
 
   - <<: *list
-    hparam: "HP_X_VALIDATION_EXCLUDE"
+    hparam: "HP_VALIDATION_EXCLUDE"
     items:
       - - "Participant_01"
         - "Participant_16"
-        - "Participant_03"
+        - "Participant_02"
         - "Participant_17"
       - - "Participant_06"
         - "Participant_12"
@@ -107,7 +106,7 @@ hparams:
         - "Participant_14"
         - "Participant_04"
         - "Participant_22"
-      - - "Participant_02"
+      - - "Participant_03"
         - "Participant_18"
         - "Participant_15"
         - "Participant_19"
@@ -116,6 +115,11 @@ hparams:
         - "Participant_13"
         - "Participant_05"
         - "Participant_10"
+
+  - <<: *list
+    hparam: "HP_TEST_TRAIN_SPLIT"
+    items:
+      - 0.7
 
   - <<: *list
     hparam: "HP_TIMESTEPS"
@@ -127,7 +131,7 @@ hparams:
       - - <<: *list
           hparam: "HP_LAYER_1_UNITS"
           items:
-            - 6
+            - 12
 
         - <<: *list
           hparam: "HP_LAYER_2_UNITS"

@@ -2,27 +2,26 @@ hyper_paramaters:
   save_hparam: true
   hparam_file: "conf/hparam.yaml"
 
-  hparam_log_file: "C:/Users/Freddie/Documents/PhD/Data/Results/18_20201116_1129_transition_state/hparam.log"
-  hparam_result_file: "C:/Users/Freddie/Documents/PhD/Data/Results/18_20201116_1129_transition_state/result.log"
+  hparam_log_file: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/hparam.log"
+  hparam_result_file: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/result.log"
 
 hardware_setup:
   use_gpu: true
   random_seed: 13
 
 data:
-  folder: "C:/Users/Freddie/Documents/PhD/Data/Results/18_20201116_1129_transition_state/Data/100hz_no_tran"
-  # folder: "C:/Users/Freddie/Documents/PhD/Data/Results/18_20201116_1129_transition_state/Data/100hz_transition"
+  # folder: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/Data/Activities_Split/Participant_01"
+  # folder: "C:/Users/Freddie/Documents/PhD/Data/Stairs_v1_2021-01-18/Out/Normalised"
+  folder: "C:/Users/Freddie/Documents/PhD/Data/Stairs/Out_OG"
 
-  test_train_split: 0.7
+  test_train_split: "@HP_TEST_TRAIN_SPLIT"
   load_augment: false
-  verbose: false
+  verbose: true
 
-  percentage_train: 1
-  max_label_difference: 1.5
+  percentage_train: 70
+  max_label_difference: 1
 
-  x_validation_exclude: "@HP_X_VALIDATION_EXCLUDE"
-  x_validation_include: "@HP_X_VALIDATION_INCLUDE"
-  x_participant_count: "@HP_PARTICINPANT_COUNT"
+  x_validation_exclude: "@HP_VALIDATION_EXCLUDE"
 
   data_settings:
     num_timesteps: "@HP_TIMESTEPS"
@@ -47,7 +46,7 @@ data:
       3: 3 # Stair Ascent
       4: 4 # Stair Descent
       5: 5 # Stop
-      # 6: 4 # Transition
+      # # 6: 4 # Transition
 model:
   config_file: "conf/model.yaml"
 
@@ -66,10 +65,10 @@ callbacks:
   tensorboard:
     histogram_freq: 1
 
-  use_early_stopping_threshold: true
-  early_stopping_threshold: 0.7
+  use_early_stopping_threshold: false
+  early_stopping_threshold: 0.85
 
-  use_early_stopping: false
+  use_early_stopping: true
   early_stopping:
     monitor: "val_loss"
     verbose: 1
@@ -82,10 +81,10 @@ callbacks:
     period: 5
 
 fit:
-  batch_size: 2000
+  batch_size: 500
   epochs: 1000
   shuffle: true
-  steps_per_epoch: 5 # 10,000 steps per epoch
+  steps_per_epoch: 5 # 50 windows per epoch
   # verbose: 2
 
 save:

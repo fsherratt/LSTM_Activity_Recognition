@@ -14,7 +14,7 @@ from train import hardware_setup, Data_Preload, load_config
 
 if __name__ == "__main__":
     SAVE_CLASS_PREDICTIONS = True
-    SAVE_HIDDEN_STATE = True
+    SAVE_HIDDEN_STATE = False
 
     # z Gyro only
     # model_folder = "20201023-122111"  # W vs (SA / SD) - exclude [1/16/03/17] - Balanced dataset - 00.00%
@@ -37,7 +37,8 @@ if __name__ == "__main__":
     # model_folder = "20201103-103709"  # SA vs (W / SD) - 91.99%
     # model_folder = "20201103-142223"  # W vs (SA / SD) - 91.05%
     # model_folder = "20201103-143503"  # SD vs (W / SD) - 89.39%
-    model_folder = "20201103-145933"  # W vs SA vs SD - 59.38%
+    # model_folder = "20201103-145933"  # W vs SA vs SD - 59.38%
+    model_folder = "20210325-112851"
 
     MODEL_FOLDER = pathlib.Path(model_folder)
     MODEL_DIR = pathlib.Path("logs\\model")
@@ -64,17 +65,18 @@ if __name__ == "__main__":
 
     if SAVE_CLASS_PREDICTIONS:
         prediction = []
-        mappings = {0: 0, 3: 0, 4: 0}
+        # mappings = {0: 0, 3: 0, 4: 0}
+        # mappings = {0: 0, 1: 0, 2: 1}
 
-        for item in mappings.items():
-            conf["data"]["data_settings"]["label_mapping"] = {item[0]: item[1]}
-            x, y = data_files.load_data(
-                filter_mode=False,
-                filter_list=TEST_PARTICIPANT,
-                include_aug=False,
-                parse_settings=conf["data"]["data_settings"],
-            )
-            prediction.append(model.predict(x, verbose=0))
+        # for item in mappings.items():
+        # conf["data"]["data_settings"]["label_mapping"] = {item[0]: item[1]}
+        x, y = data_files.load_data(
+            filter_mode=False,
+            filter_list=TEST_PARTICIPANT,
+            include_aug=False,
+            parse_settings=conf["data"]["data_settings"],
+        )
+        prediction.append(model.predict(x, verbose=0))
 
         # Save to file
         if not os.path.exists(str(SAVE_DIR / MODEL_FOLDER)):
@@ -94,6 +96,7 @@ if __name__ == "__main__":
         pd.DataFrame(pred_array).to_csv(
             str(SAVE_DIR / MODEL_FOLDER / "class_pred.csv"), na_rep="NA"
         )
+        pd.DataFrame(y).to_csv(str(SAVE_DIR / MODEL_FOLDER / "y.csv"), na_rep="NA")
 
     if SAVE_HIDDEN_STATE:
         conf["data"]["data_settings"]["label_mapping"] = None

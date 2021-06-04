@@ -13,12 +13,12 @@ from train import Data_Preload, load_config, label_to_one_hot, split_test_train
 
 if __name__ == "__main__":
     LOG_DIR = pathlib.Path("logs")
-    MODEL_DIR = LOG_DIR / "model"
+    MODEL_DIR = LOG_DIR / "model/20210318-144954"
     CONF_DIR = LOG_DIR / "conf"
     DATA_DIR = pathlib.Path(
         (
             "C:/Users/Freddie/Documents/PhD/Data/Results/"
-            "18_20201116_1129_transition_state/Data/100hz_no_tran"
+            "/19_20210315_1542_fully_custom_model/Data/Amputee"
             # "18_20201116_1129_transition_state/Data/100hz_transition"  # Transition state will be excluded!
         ),
     )
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
         train_data, train_label = data_files.load_data(
             parse_settings=settings,
-            filter_mode=True,
+            filter_mode=False,
             filter_list=exclude,
             include_aug=False,
         )
