@@ -267,7 +267,11 @@ class Data_Preload:
                 if file_activity != activity:
                     continue
 
-                if file_count >= file_offset and training_sample_count < sample_min:
+                total_file_count += 1
+                if total_file_count < file_offset:
+                    continue
+
+                if training_sample_count < sample_min:
                     new_x, new_y = self.parse_file(
                         self.file_dict[file], **parse_settings
                     )
@@ -290,8 +294,6 @@ class Data_Preload:
                     activity_train_files.append(file.name)
                     file_count += 1
 
-                total_file_count += 1
-
             # Deal with file list wraparound
             roll_over_file_count = 0
             if training_sample_count < sample_min:
@@ -301,6 +303,7 @@ class Data_Preload:
                         continue
 
                     # Stop when we reach the file_offset
+                    roll_over_file_count += 1
                     if roll_over_file_count >= file_offset:
                         # We've run out of files - i.e. there's not enough data
                         print("ERROR: Reached file offset index")
@@ -316,7 +319,11 @@ class Data_Preload:
 
                         file_count += 1
 
-                    roll_over_file_count += 1
+            x_train_act = []  # Training data
+            y_train_act = []  # Training labels
+
+            x_test_act = []  # Test data
+            y_test_act = []  # Test labels
 
             # Load train/test data - Convert data into windows
             for file in data_files:
@@ -327,21 +334,34 @@ class Data_Preload:
                 new_x, new_y = self.parse_file(self.file_dict[file], **parse_settings)
 
                 if any(file.name in train_file for train_file in activity_train_files):
-                    x_train.extend(new_x)
-                    y_train.extend(new_y)
+                    x_train_act.extend(new_x)
+                    y_train_act.extend(new_y)
                 else:
-                    x_test.extend(new_x)
-                    y_test.extend(new_y)
+                    x_test_act.extend(new_x)
+                    y_test_act.extend(new_y)
 
             print(
                 "{}/{} {} files\t Training Samples: {}\t Test Samples {}".format(
                     file_count,
                     total_file_count,
                     activity,
-                    training_sample_count,
-                    test_sample_count,
+                    len(y_train_act),
+                    len(y_test_act),
                 )
             )
+
+            # Discard excess training data
+            perms = np.random.permutation(sample_min)
+            x_train_act = list(x_train_act[i] for i in perms)
+            y_train_act = list(y_train_act[i] for i in perms)
+
+            # x_test_act = list(x_test_act[i] for i in perms)
+            # y_test_act = list(y_test_act[i] for i in perms)
+
+            x_train += x_train_act
+            y_train += y_train_act
+            x_test += x_test_act
+            y_test += y_test_act
 
         x_train = np.asarray(x_train)
         y_train = np.asarray(y_train)
@@ -674,7 +694,7 @@ if __name__ == "__main__":
     )
 
     # Hyper paramater training
-    start_ix_offset = 0
+    start_ix_offset = 25
     for ix, hparam_set in enumerate(hparams):
         if ix + 1 < start_ix_offset:
             continue
@@ -698,15 +718,16 @@ if __name__ == "__main__":
 
             # Import and process data
             # Filter out participant for cross validation study
-            train_data, _ = data_files.load_data_activities(
+            train_data, test_data = data_files.load_data_activities(
                 parse_settings=conf["data"]["data_settings"],
-                file_offset=0,
-                sample_min=10000000,
-                filter_mode=True,  # Exclude participants in list
+                file_offset=conf["data"]["episode_offset"],
+                sample_min=conf["data"]["training_samples"],
+                filter_mode=False,  # Include participants in list
                 filter_list=conf["data"]["x_validation_exclude"],
             )
 
             print("Training Data Samples: {}".format(len(train_data[1])))
+            print("Test Data Samples: {}".format(len(test_data[1])))
 
             validation_data, train_data = split_test_train(
                 train_data[0],
@@ -716,25 +737,14 @@ if __name__ == "__main__":
                 max_difference=conf["data"]["max_label_difference"],
             )
 
-            # Load test data
-            test_data, _ = data_files.load_data_activities(
-                parse_settings=conf["data"]["data_settings"],
-                file_offset=0,
-                sample_min=1000000,
-                filter_mode=False,  # Include participants for test
-                filter_list=conf["data"]["x_validation_exclude"],
-            )
-
-            print("Test Data Samples: {}".format(len(test_data[1])))
-
             # Balance Data Set - Limit maximum difference between test classes
-            # _, test_data = split_test_train(
-            #     test_data[0],
-            #     test_data[1],
-            #     split=1.0,
-            #     percent_train=1.0,
-            #     max_difference=1.0,
-            # )
+            _, test_data = split_test_train(
+                test_data[0],
+                test_data[1],
+                split=1.0,
+                percent_train=1.0,
+                max_difference=1.0,
+            )
 
             # Check data distribution
             train_unique_labels, train_label_count = np.unique(
@@ -916,8 +926,8 @@ if __name__ == "__main__":
 
                 # Save results to log files
                 # Make participant exclusion data CSV friendly
-                hparam_set["HP_VALIDATION_EXCLUDE"] = "-".join(
-                    map(str, hparam_set["HP_VALIDATION_EXCLUDE"])
+                hparam_set["HP_VALIDATION_INCLUDE"] = "-".join(
+                    map(str, hparam_set["HP_VALIDATION_INCLUDE"])
                 )
 
                 header = ["Timestamp", "Sweep", "Sweep Total"]

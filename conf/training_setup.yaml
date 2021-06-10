@@ -10,9 +10,7 @@ hardware_setup:
   random_seed: 13
 
 data:
-  # folder: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/Data/Activities_Split/Participant_01"
-  # folder: "C:/Users/Freddie/Documents/PhD/Data/Stairs_v1_2021-01-18/Out/Normalised"
-  folder: "C:/Users/Freddie/Documents/PhD/Data/Stairs/Out_OG"
+  folder: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/Data/Activities_Split/Participant_01"
 
   test_train_split: "@HP_TEST_TRAIN_SPLIT"
   load_augment: false
@@ -20,6 +18,9 @@ data:
 
   percentage_train: 70
   max_label_difference: 1
+
+  episode_offset: "@HP_EPISODE_OFFSET"
+  training_samples: "@HP_TRAINING_SAMPLES"
 
   x_validation_exclude: "@HP_VALIDATION_EXCLUDE"
 
