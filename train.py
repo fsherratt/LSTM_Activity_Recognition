@@ -49,12 +49,7 @@ def hardware_setup(use_gpu: True, random_seed: 0):
 def parse_cli():
     parser = argparse.ArgumentParser(description="Startup module(s)")
     parser.add_argument(
-        "-c",
-        "-C",
-        "--config-file",
-        type=str,
-        default=None,
-        help="Config file path",
+        "-c", "-C", "--config-file", type=str, default=None, help="Config file path",
     )
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
     parser.add_argument(
@@ -163,11 +158,7 @@ def fit_model(
 
 class Data_Files:
     def __init__(
-        self,
-        data_folder: str,
-        verbose=True,
-        shuffle=False,
-        preload=True,
+        self, data_folder: str, verbose=True, shuffle=False, preload=True,
     ):
         self.verbose = verbose
 
@@ -501,23 +492,6 @@ class Data_Files:
         return x, y
 
     @staticmethod
-    def check_freq(file_name: str, freq_min: int, freq_max: int) -> bool:
-        if freq_min is None:
-            freq_min = -math.inf
-
-        if freq_max is None:
-            freq_max = math.inf
-
-        freq = re.search(r"(?:Aug|Out)_(\d*)", file_name).group(1)
-        freq = int(freq)
-
-        return freq_min <= freq <= freq_max
-
-    @staticmethod
-    def is_augmented_data(file_name: str) -> bool:
-        return "Aug_" in file_name
-
-    @staticmethod
     def get_activity_type(file_name: str) -> tuple:
         # Search file name to try and identify activity and split index
         # Filename in format ABC_freq_ACTIVITY_NAME_Log_Date_time.csv
@@ -614,49 +588,6 @@ class Data_Files:
             data_frames = tf.keras.utils.normalize(data_frames, axis=1, order=2)
 
         return data_frames, label_frames
-
-
-# Percentage train allows
-def split_test_train(
-    data, labels, split, percent_train=1.0, max_difference=1.5, split_is_samples=False
-):
-    train_rows = []
-    test_rows = []
-
-    # Do something to limit max difference between labels
-    unique_labels, label_count = np.unique(labels, return_counts=True)
-
-    # Ensure that we have some data to train with
-    new_label_count = label_count
-    # new_label_count = label_count[label_count > 0.5 * np.median(label_count)]
-    # if len(label_count) != len(new_label_count):
-    #     print("!!!!!Quantiy of labels is too varied!!!!!")
-
-    min_labels = np.min(new_label_count)
-
-    for i in range(unique_labels.shape[0]):
-        # Limit to 50% difference
-        if max_difference is not None and label_count[i] > max_difference * min_labels:
-            label_count[i] = max_difference * min_labels
-
-        train_test_split = split if split_is_samples else int(split * label_count[i])
-        label_rows = np.where(labels == unique_labels[i])[0]
-        perms = np.random.permutation(label_count[i])
-
-        train_rows.extend(label_rows[perms[: int(train_test_split * percent_train)]])
-        test_rows.extend(label_rows[perms[train_test_split:]])
-
-    print(label_count)
-    train = (
-        data.take(train_rows, axis=0),
-        labels.take(train_rows, axis=0),
-    )
-    test = (
-        data.take(test_rows, axis=0),
-        labels.take(test_rows, axis=0),
-    )
-
-    return test, train
 
 
 def label_to_one_hot(labels, num_activities, label_mapping=None):
@@ -938,9 +869,7 @@ if __name__ == "__main__":
 
                 save_copy_config(save_folder, "config.yaml", conf)
                 save_copy_config(
-                    save_folder,
-                    "model.yaml",
-                    model_conf,
+                    save_folder, "model.yaml", model_conf,
                 )
 
             # ------------------------------------------------------------------------------
