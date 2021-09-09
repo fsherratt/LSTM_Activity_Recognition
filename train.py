@@ -194,7 +194,7 @@ class Data_Files:
         return [
             file_name
             for file_name in self.file_list
-            if self.check_validity(str(file_name), filter_dir)
+            if self.check_if_not_in_dir(str(file_name), filter_dir)
         ]
 
     def include_filter(self, filter_dir: str) -> list:
@@ -204,8 +204,24 @@ class Data_Files:
         return [
             file_name
             for file_name in self.file_list
-            if not self.check_validity(str(file_name), filter_dir)
+            if not self.check_if_not_in_dir(str(file_name), filter_dir)
         ]
+
+    @staticmethod
+    def check_if_not_in_dir(file_name: str, dirs: list) -> bool:
+        """
+        Check if the file path contains in the directory list
+
+        @param file_name: str
+            File name to test
+
+        @param dirs: list
+            List of directory names to test
+
+        @return bool
+            True if not in list of directories, False otherwise
+        """
+        return all(exclude not in file_name for exclude in dirs)
 
     def _gen_activity_file_lists(self, data_files: list) -> dict:
         """
@@ -249,7 +265,19 @@ class Data_Files:
         return data_files
 
     @staticmethod
-    def _clip_per_activity_data_windows(data_dict: dict, max_items: int):
+    def _clip_per_activity_data_windows(data_dict: dict, max_items: int) -> dict:
+        """
+        Ensure each activity has no more that the maximum items, discard items randomly
+
+        @param data_dict: dict
+            Dictionary of lists for each activity
+
+        @param max_items: int
+            Maximum number of items to cap at
+
+        @return dict
+            Capped dictionary of lists for each activity
+        """
         for key, value in data_dict.items():
             perms = np.random.permutation(len(value[1]))
             perms = list(perms[:max_items])
@@ -510,10 +538,6 @@ class Data_Files:
         return file_activity
 
     @staticmethod
-    def check_validity(file_name: str, exclude_dirs) -> bool:
-        return all(exclude not in file_name for exclude in exclude_dirs)
-
-    @staticmethod
     def get_file_list(data_directory: str, extension: str) -> list:
         data_directory = pathlib.Path(data_directory)
         files = os.listdir(data_directory)
@@ -667,16 +691,25 @@ def analyse_test_data(y_true, y_pred, num_classes) -> dict:
     return {**default_result_dict, **class_report}
 
 
-def gen_conf_matrix(data, labels, data_type: str):
+def gen_conf_matrix(model, data, labels):
+    """
+    @param model: tf.model
+        Tensorflow model to test
+
+    @param data: np.array
+        Data windows to test model against
+    
+    @param labels: np.array
+        Corresponding data labels
+    """
     actual_class = tf.math.argmax(labels, axis=-1)
     predicted_class = tf.math.argmax(model.predict(data), axis=-1)
 
     acc = sum(np.asarray(actual_class) == np.asarray(predicted_class)) / len(
         actual_class
     )
-    print(f"*** {data_type} Performance ***")
 
-    print(f"{data_type} values {tf.math.reduce_sum(labels.astype(np.int32), axis=0)}")
+    print(f"Values {tf.math.reduce_sum(labels.astype(np.int32), axis=0)}")
     print(f"Accuracy: {acc:.3f}%")
     conf_matrix = tf.math.confusion_matrix(
         labels=actual_class,
@@ -688,9 +721,15 @@ def gen_conf_matrix(data, labels, data_type: str):
     return actual_class, predicted_class
 
 
-def save_hparam_to_file(file, header, values):
+def save_list_to_file(file, values):
+    """
+    @param file: str
+        File to save to
+
+    @param header: list
+        List of header values to save to file
+    """
     with open(pathlib.Path(file), mode="a") as file:
-        file.write(",".join(map(str, header)) + "\n")
         file.write(",".join(map(str, values)) + "\n")
 
 
@@ -889,10 +928,13 @@ if __name__ == "__main__":
 
             # ------------------------------------------------------------------------------
             # Print data summary
-            gen_conf_matrix(train_data[0], train_data[1], "train")
-            gen_conf_matrix(validation_data[0], validation_data[1], "validation")
+            print(f"*** Train Performance ***")
+            gen_conf_matrix(model, train_data[0], train_data[1])
+            print(f"*** Validation Performance ***")
+            gen_conf_matrix(model, validation_data[0], validation_data[1])
+            print(f"*** Test Performance ***")
             actual_class, predicted_class = gen_conf_matrix(
-                test_data[0], test_data[1], "test"
+                model, test_data[0], test_data[1]
             )
 
             # ------------------------------------------------------------------------------
@@ -918,9 +960,8 @@ if __name__ == "__main__":
                     *hparam_set.keys(),
                 ]
                 values = [start_time, ix + 1, len(hparams), *hparam_set.values()]
-                save_hparam_to_file(
-                    conf["hyper_paramaters"]["hparam_log_file"], header, values
-                )
+                save_list_to_file(conf["hyper_paramaters"]["hparam_log_file"], header)
+                save_list_to_file(conf["hyper_paramaters"]["hparam_log_file"], values)
 
                 # Results
                 header = [
@@ -940,8 +981,11 @@ if __name__ == "__main__":
                     history.history["val_categorical_accuracy"][-1],
                     *class_report.values(),
                 ]
-                save_hparam_to_file(
-                    conf["hyper_paramaters"]["hparam_result_file"], header, values
+                save_list_to_file(
+                    conf["hyper_paramaters"]["hparam_result_file"], header
+                )
+                save_list_to_file(
+                    conf["hyper_paramaters"]["hparam_result_file"], values
                 )
 
         except KeyboardInterrupt:
