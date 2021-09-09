@@ -688,10 +688,10 @@ def gen_conf_matrix(data, labels, data_type: str):
     return actual_class, predicted_class
 
 
-def save_hparam_to_file(file, headers, values):
-    with open(pathlib.Path(file, mode="a+")) as file:
-        file.write(",".join(map(str, header)))
-        file.write(",".join(map(str, values)))
+def save_hparam_to_file(file, header, values):
+    with open(pathlib.Path(file), mode="a") as file:
+        file.write(",".join(map(str, header)) + "\n")
+        file.write(",".join(map(str, values)) + "\n")
 
 
 if __name__ == "__main__":
@@ -805,10 +805,6 @@ if __name__ == "__main__":
                 layer_definitions=model_conf["layers"], input_shape=input_shape
             )
 
-            #
-            dense = model.layers[1]
-            print(dense.get_weights())
-
             loss_func = loss_function(
                 conf["loss_func"]["type"], conf["loss_func"]["settings"]
             )
@@ -915,7 +911,7 @@ if __name__ == "__main__":
                     map(str, hparam_set["HP_VALIDATION_INCLUDE"])
                 )
 
-                header_values = [
+                header = [
                     "Timestamp",
                     "Sweep",
                     "Sweep Total",
@@ -923,7 +919,7 @@ if __name__ == "__main__":
                 ]
                 values = [start_time, ix + 1, len(hparams), *hparam_set.values()]
                 save_hparam_to_file(
-                    conf["hyper_paramaters"]["hparam_log_file"], header_values, values
+                    conf["hyper_paramaters"]["hparam_log_file"], header, values
                 )
 
                 # Results
