@@ -34,11 +34,11 @@ definitions:
 hparams:
   - <<: *const
     hparam: "HP_RUN_ID"
-    value: 3
+    value: 1
 
   - <<: *const
     hparam: "HP_DESCRIPTION"
-    value: "Validation of new data processing methods - OG dataset"
+    value: "Amount of data and model size comparison"
 
   - <<: *const
     hparam: "HP_NUMBER_ACTIVITIES"
@@ -83,7 +83,9 @@ hparams:
 
   - <<: *const
     hparam: "HP_CLASSIFIER_TYPE"
-    value: "relu"
+    # value: "relu"
+    # value: "leaky_relu"
+    value: "softmax"
 
   - <<: *const
     hparam: "HP_DATASET_FOLDER"
@@ -110,7 +112,12 @@ hparams:
       - - <<: *list
           hparam: "HP_LAYER_1_UNITS"
           items:
-            - 6
+            # - 4
+            # - 6
+            # - 8
+            # - 16
+            # - 32
+            # - 64
 
         - <<: *list
           hparam: "HP_LAYER_2_UNITS"
@@ -130,17 +137,22 @@ hparams:
   - <<: *list
     hparam: "HP_EPISODE_OFFSET"
     items:
-      - 0
-      - 3
-      - 6
-      - 9
-      - 12
+      # - 0
+      # - 2
+      # - 4
+      # - 6
+      - 8
 
   - <<: *list
     hparam: "HP_TRAINING_SAMPLES"
     items:
-      - 100
-      - 200
-      - 500
-      - 1000
-      - 2000
+      # - 1000
+      # - 1500
+      # - 3000
+      # - 6000
+      # - 9000
+      # - 12000
+      - 15000
+      # - 20000
+      # - 25000
+      # - 30000

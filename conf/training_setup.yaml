@@ -10,10 +10,9 @@ hardware_setup:
   random_seed: 13
 
 data:
-  folder: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/Data/Activities_Split/Participant_01"
+  folder: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/Data/Activities_Split"
 
   test_train_split: "@HP_TEST_TRAIN_SPLIT"
-  load_augment: false
   verbose: true
 
   percentage_train: 70
@@ -21,25 +20,33 @@ data:
 
   episode_offset: "@HP_EPISODE_OFFSET"
   training_samples: "@HP_TRAINING_SAMPLES"
+  test_samples: 5000
 
-  x_validation_exclude: "@HP_VALIDATION_EXCLUDE"
+  x_validation_exclude: "@HP_VALIDATION_INCLUDE"
 
   data_settings:
     num_timesteps: "@HP_TIMESTEPS"
     num_labels: "@HP_NUMBER_ACTIVITIES"
-    skip: 1
+    skip: 2
     normalize: false
     label_heading: "activity"
     data_headings:
-      - "r_ankle_accel_x" # Forward
+      - "r_ankle_accel_x"
       - "r_ankle_accel_y"
       - "r_ankle_accel_z"
       - "r_ankle_gyro_x"
-      - "r_ankle_gyro_y" # Saggital
+      - "r_ankle_gyro_y"
       - "r_ankle_gyro_z"
       # - "r_ankle_magn_x"
       # - "r_ankle_magn_y"
       # - "r_ankle_magnz"
+      - "l_ankle_accel_x" # = r
+      - "l_ankle_accel_y" # = -r
+      - "l_ankle_accel_z" # = r
+      - "l_ankle_gyro_x" # = -r
+      - "l_ankle_gyro_y" # = r
+      - "l_ankle_gyro_z" # = -r
+
     label_mapping:
       0: 0 # Walking
       1: 1 # Ramp Ascent
@@ -67,13 +74,13 @@ callbacks:
     histogram_freq: 1
 
   use_early_stopping_threshold: false
-  early_stopping_threshold: 0.85
+  early_stopping_threshold: 0.96
 
   use_early_stopping: true
   early_stopping:
     monitor: "val_loss"
     verbose: 1
-    patience: 5
+    patience: 3
 
   use_save_model: true
   save_model:
@@ -85,7 +92,7 @@ fit:
   batch_size: 500
   epochs: 1000
   shuffle: true
-  steps_per_epoch: 5 # 50 windows per epoch
+  # steps_per_epoch: 5 # 50 windows per epoch
   # verbose: 2
 
 save:

@@ -3,19 +3,19 @@ This file setups and run ML training based of provided config files
 """
 import argparse
 import datetime
+import collections
 from logging import error
 import os
 import math
 import pathlib
-import shutil
 import copy
 import random
 import re
+from typing import Collection
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow.python.ops.gen_math_ops import inv_eager_fallback
 import yaml
 
 from sklearn import metrics as skmetrics
@@ -23,6 +23,10 @@ from sklearn.utils import class_weight, shuffle
 
 import hparam_load
 from earlyStoppingCallback import EarlyStoppingCallback
+
+
+class InsufficientData(Exception):
+    pass
 
 
 def hardware_setup(use_gpu: True, random_seed: 0):
@@ -33,6 +37,9 @@ def hardware_setup(use_gpu: True, random_seed: 0):
         try:
             physical_devices = tf.config.experimental.list_physical_devices("GPU")
             tf.config.experimental.set_memory_growth(physical_devices[0], True)
+
+            print("GPU Device")
+            tf.test.gpu_device_name()
         except RuntimeError as e:
             print(e)
     else:
@@ -42,7 +49,12 @@ def hardware_setup(use_gpu: True, random_seed: 0):
 def parse_cli():
     parser = argparse.ArgumentParser(description="Startup module(s)")
     parser.add_argument(
-        "-c", "-C", "--config-file", type=str, default=None, help="Config file path",
+        "-c",
+        "-C",
+        "--config-file",
+        type=str,
+        default=None,
+        help="Config file path",
     )
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
     parser.add_argument(
@@ -77,6 +89,12 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
         "avgpool1D": tf.keras.layers.AvgPool1D,
     }
 
+    activation_dict = {
+        "relu": tf.nn.relu,
+        "leaky_relu": tf.nn.leaky_relu,
+        "softmax": tf.nn.softmax,
+    }
+
     # Add input definition to first layer
     layer_definitions[0]["args"]["input_shape"] = input_shape
 
@@ -91,6 +109,12 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
 
             if layer["args"] is None:
                 layer["args"] = {}
+
+            if layer["type"] == "activation":
+                layer["args"]["activation"] = activation_dict[
+                    layer["args"]["activation"]
+                ]
+
             tf_model.add(layer_dict[layer["type"]](**layer["args"]))
 
     return tf_model
@@ -120,257 +144,315 @@ def fit_model(
     # class_weight_val = np.ones(training_data[1].shape[-1])
 
     y = np.argmax(training_data[1], axis=-1)
-    class_weight_val = class_weight.compute_class_weight(
+    class_weights = class_weight.compute_class_weight(
         class_weight="balanced", classes=np.unique(y), y=y
     )
-    class_weights = dict(zip(np.unique(y), class_weight_val))
+    # class_weights = dict(zip(np.unique(y), class_weights))
 
-    print("Class Weights: ", end="")
-    print(class_weights)
+    print(f"Class Weights: {class_weights}")
 
-    rtn_history = tf_model.fit(
+    return tf_model.fit(
         x=training_data[0],
         y=training_data[1],
         validation_data=validation_data,
         callbacks=callbacks,
-        class_weight=class_weights,
+        # class_weight=class_weights,
         **settings,
     )
 
-    return rtn_history
 
-
-class Data_Preload:
+class Data_Files:
     def __init__(
-        self, data_folder: str, load_augment=True, verbose=True, shuffle=False
+        self,
+        data_folder: str,
+        verbose=True,
+        shuffle=False,
+        preload=True,
     ):
-        self.load_augment = load_augment
-
         self.verbose = verbose
 
-        self.file_list = []
         self.extension = ".csv"
-        self.file_dict = dict()
+        self.file_dict = {}
 
         self.file_list = self.get_file_list(data_folder, self.extension)
-        self.preload_data(shuffle=shuffle)
 
-    def preload_data(self, shuffle=False):
-        for file_name in self.file_list:
-            if self.load_augment or not self.is_augmented_data(str(file_name)):
-                if self.verbose:
-                    print("Loading {}".format(file_name))
-                self.file_dict[file_name] = self.load_file(file_name)
-
-        # Shuffle list
         if shuffle:
             random.seed(1)
             random.shuffle(self.file_list)
 
-    def exclude_filter(
-        self, filter_dir: str, include_aug: bool, freq_min: int, freq_max: int
-    ) -> list:
+        if preload:
+            self.preload_data()
+
+    def find_cache_data(self, data_file):
+        if data_file not in self.file_dict:
+            if self.verbose:
+                print(f"Loading {data_file.name}")
+            self.file_dict[data_file] = self.load_file(data_file)
+
+        return self.file_dict[data_file]
+
+    def preload_data(self):
+        for file_name in self.file_list:
+            if self.load_augment or not self.is_augmented_data(str(file_name)):
+                self.file_dict[file_name] = self.load_file(file_name)
+
+    def exclude_filter(self, filter_dir: str) -> list:
         if filter_dir is None:
-            return self.file_dict.keys()
+            return self.file_list
 
-        return_list = []
+        return [
+            file_name
+            for file_name in self.file_list
+            if self.check_validity(str(file_name), filter_dir)
+        ]
 
-        for file_name in self.file_dict.keys():
-            if not self.check_validity(str(file_name), filter_dir):
-                continue
-
-            # if (
-            #     not include_aug
-            #     and self.is_augmented_data(str(file_name)) is not include_aug
-            # ):
-            #     continue
-
-            # if not self.check_freq(str(file_name), freq_min, freq_max):
-            #     continue
-
-            return_list.append(file_name)
-
-        return return_list
-
-    def include_filter(
-        self, filter_dir: str, include_aug: bool, freq_min: int, freq_max: int
-    ) -> list:
+    def include_filter(self, filter_dir: str) -> list:
         if filter_dir is None:
-            return self.file_dict.keys()
+            return self.file_list
 
-        return_list = []
+        return [
+            file_name
+            for file_name in self.file_list
+            if not self.check_validity(str(file_name), filter_dir)
+        ]
 
-        for file_name in self.file_dict.keys():
-            if self.check_validity(str(file_name), filter_dir):
-                continue
+    def _gen_activity_file_lists(self, data_files: list) -> dict:
+        """
+        Seperate out the different file types into seperate lists
 
-            # if self.is_augmented_data(str(file_name)) is not include_aug:
-            #     continue
+        @param data_files: list
+            A list of data file Path objects
 
-            # if not self.check_freq(str(file_name), freq_min, freq_max):
-            #     continue
+        @return dict
+            Dictionary of lists - one list for each activity type
+        """
+        activity_list = collections.defaultdict(list)
 
-            return_list.append(file_name)
+        for file in data_files:
+            activity_list[self.get_activity_type(file.name)].append(file)
 
-        return return_list
+        return dict(activity_list)
+
+    @staticmethod
+    def _offset_file_dict(data_files: dict, offset: int) -> dict:
+        """
+        Offset all of the lists in a dictionary
+
+        @param data_files: dict
+            Dictionary of lists - one list for each activity type
+
+        @param offset: int
+            Amount of entries to offset the list by
+
+        @return dict
+            Dictionary of lists - one list for each activity type
+        """
+        for key, value in data_files.items():
+            if offset > len(value):
+                raise InsufficientData(
+                    f"The number of data files for '{key}' is less than offset {offset}"
+                )
+
+            value = value[offset:] + value[:offset]
+
+        return data_files
+
+    @staticmethod
+    def _clip_per_activity_data_windows(data_dict: dict, max_items: int):
+        for key, value in data_dict.items():
+            perms = np.random.permutation(len(value[1]))
+            perms = list(perms[:max_items])
+
+            data = [value[0][i] for i in perms]
+            labels = [value[1][i] for i in perms]
+
+            data_dict[key] = (data, labels)
+
+        return data_dict
+
+    def _parse_episode_list(
+        self, input_data_files: dict, target_samples: int, parse_settings: dict
+    ) -> tuple:
+        """
+        Parse the episode list until the correct amount of samples has been reached. A IndexError is raised if not enough data available
+
+        @param input_data_files : dict
+             Dictionary of lists - one list for each activity type
+
+        @param target_samples: int
+            Target number of data samples
+
+        @param parse_settings: dict
+            Dictionary of parsing settings
+        """
+        activity_data_files = copy.copy(input_data_files)
+
+        activity_samples = collections.defaultdict(lambda: ([], []))
+        for key, value in activity_data_files.items():
+            while len(activity_samples[key][1]) < target_samples:
+                try:
+                    file = value.pop(0)
+                except IndexError:
+                    raise InsufficientData(f"Not enough data for activity {key}")
+
+                x, y = self.parse_file(self.find_cache_data(file), **parse_settings)
+
+                activity_samples[key][0].extend(x)
+                activity_samples[key][1].extend(y)
+
+        return dict(activity_samples), activity_data_files
+
+    def load_data_episodes(
+        self,
+        parse_kwargs: dict,
+        file_offset: int,
+        test_samples_min: int,
+        train_samples_min: int,
+        valid_samples_min: int,
+        filter_mode=True,  # True = exclude items in list, False = only load list
+        filter_list=None,  # List
+    ) -> dict:
+        """
+        Parse data files for episode based data
+
+        @param parse_kwargs: dict
+            Keyword arguments for the data parser
+
+        @param file_offset: int
+            The starting point in the data file list - allows for consistent shuffling of data
+
+        @param test_samples_min: int
+            The minimum number of test samples to return
+
+        @param train_samples_min: int
+            The minimum number of training samples to return
+
+        @param valid_samples_min: int
+            The minimum number of validation samples to return
+
+        @filter mode: bool
+            True if items in the filter list directories should be excluded, False if only filter list directories should be included
+
+        @return dict of train, test and validation data dictionaries
+        """
+
+        if filter_mode is None:
+            data_files = self.file_list
+        elif filter_mode:
+            data_files = self.exclude_filter(filter_list)
+        else:
+            data_files = self.include_filter(filter_list)
+
+        activity_file_dict = self._gen_activity_file_lists(data_files)
+        activity_file_dict = self._offset_file_dict(activity_file_dict, file_offset)
+
+        # Parse episodes until the correct amount of data is obtained
+        # Test data
+        test_data, activity_file_dict = self._parse_episode_list(
+            activity_file_dict, test_samples_min, parse_kwargs
+        )
+
+        # Train data
+        train_data, activity_file_dict = self._parse_episode_list(
+            activity_file_dict, train_samples_min, parse_kwargs
+        )
+
+        # Validataion data
+        valid_data, activity_file_dict = self._parse_episode_list(
+            activity_file_dict, valid_samples_min, parse_kwargs
+        )
+
+        return {"train": train_data, "valid": valid_data, "test": test_data}
 
     def load_data_activities(
         self,
-        parse_settings: dict,
+        parse_kwargs: dict,
         file_offset: int,
-        sample_min: int,
-        filter_mode=True,  # True = exclude items in list, False = only load list
-        filter_list=None,  # List
+        test_samples: int,
+        train_samples: int,
+        valid_samples: int,
+        filter_mode=True,
+        filter_list=None,
     ):
-        filter = {
-            "filter_dir": filter_list,
-            "include_aug": False,
-            "freq_min": 0,
-            "freq_max": 1000,
+        """
+        Extends load data episodes by adding left/right ankle, clipping max data, combining activities
+
+        @param parse_kwargs: dict
+            Keyword arguments for the data parser
+
+        @param file_offset: int
+            The starting point in the data file list - allows for consistent shuffling of data
+
+        @param test_sample: int
+            The number of test samples to return
+
+        @param train_sample: int
+            The number of training samples to return
+
+        @param valid_sample: int
+            The number of validation samples to return
+
+        @filter mode: bool
+            True if items in the filter list directories should be excluded, False if only filter list directories should be included
+
+        @return dict of train, test and validation data dictionaries
+        """
+        data_episodes_kwargs = {
+            "parse_kwargs": parse_kwargs,
+            "file_offset": file_offset,
+            "test_samples_min": int(test_samples / 2),
+            "train_samples_min": int(train_samples / 2),
+            "valid_samples_min": int(valid_samples / 2),
+            "filter_mode": filter_mode,
+            "filter_list": filter_list,
         }
-        # This function must combine files by activity type - returning the remaining data to use as test data
-        activity_list = {
-            "walking": 0,
-            "ramp_up": 1,
-            "ramp_down": 2,
-            "stair_up": 3,
-            "stair_down": 4,
-            "stop": 5,
-        }
 
-        x_train = []  # Training data
-        y_train = []  # Training labels
+        r_parse_kwargs = copy.copy(parse_kwargs)
+        r_parse_kwargs["data_headings"] = [
+            i for i in parse_kwargs["data_headings"] if i.startswith("r")
+        ]
 
-        x_test = []  # Test data
-        y_test = []  # Test labels
+        l_parse_kwargs = copy.copy(parse_kwargs)
+        l_parse_kwargs["data_headings"] = [
+            i for i in parse_kwargs["data_headings"] if i.startswith("l")
+        ]
 
-        if filter_mode is None:
-            data_files = self.file_dict.keys()
-        elif filter_mode:
-            data_files = self.exclude_filter(**filter)
-        else:
-            data_files = self.include_filter(**filter)
+        # Load data for left and right ankles
+        data_episodes_kwargs["parse_kwargs"] = r_parse_kwargs
+        r_data = self.load_data_episodes(**data_episodes_kwargs)
 
-        # Going to assume there is enough data for 10 interations
-        for activity in activity_list.keys():
-            total_file_count = 0
-            file_count = 0
-            training_sample_count = 0
-            test_sample_count = 0
+        data_episodes_kwargs["parse_kwargs"] = l_parse_kwargs
+        l_data = self.load_data_episodes(**data_episodes_kwargs)
 
-            activity_train_files = []
-
-            # First loop through make list of episodes to go in each data set (train/test)
-            for file in data_files:
-                file_activity = self.get_activity_type(file.name)
-
-                if file_activity != activity:
-                    continue
-
-                total_file_count += 1
-                if total_file_count < file_offset:
-                    continue
-
-                if training_sample_count < sample_min:
-                    new_x, new_y = self.parse_file(
-                        self.file_dict[file], **parse_settings
-                    )
-
-                    if len(new_y) <= 0:
-                        continue
-
-                    unique_labels, label_count = np.unique(new_y, return_counts=True)
-
-                    print(
-                        "file: {}\tfile_name: {}\tactivity_val: {}, {}".format(
-                            file.name,
-                            activity_list[file_activity],
-                            unique_labels,
-                            label_count,
-                        )
-                    )
-
-                    training_sample_count += len(new_x)
-                    activity_train_files.append(file.name)
-                    file_count += 1
-
-            # Deal with file list wraparound
-            roll_over_file_count = 0
-            if training_sample_count < sample_min:
-                for file in data_files:
-                    file_activity = self.get_activity_type(file.name)
-                    if file_activity != activity:
-                        continue
-
-                    # Stop when we reach the file_offset
-                    roll_over_file_count += 1
-                    if roll_over_file_count >= file_offset:
-                        # We've run out of files - i.e. there's not enough data
-                        print("ERROR: Reached file offset index")
-                        break
-
-                    if training_sample_count < sample_min:
-                        new_x, new_y = self.parse_file(
-                            self.file_dict[file], **parse_settings
-                        )
-
-                        training_sample_count += len(new_x)
-                        activity_train_files.append(file)
-
-                        file_count += 1
-
-            x_train_act = []  # Training data
-            y_train_act = []  # Training labels
-
-            x_test_act = []  # Test data
-            y_test_act = []  # Test labels
-
-            # Load train/test data - Convert data into windows
-            for file in data_files:
-                file_activity = self.get_activity_type(file.name)
-                if file_activity != activity:
-                    continue
-
-                new_x, new_y = self.parse_file(self.file_dict[file], **parse_settings)
-
-                if any(file.name in train_file for train_file in activity_train_files):
-                    x_train_act.extend(new_x)
-                    y_train_act.extend(new_y)
-                else:
-                    x_test_act.extend(new_x)
-                    y_test_act.extend(new_y)
-
-            print(
-                "{}/{} {} files\t Training Samples: {}\t Test Samples {}".format(
-                    file_count,
-                    total_file_count,
-                    activity,
-                    len(y_train_act),
-                    len(y_test_act),
-                )
+        # Clip data
+        for key, value in r_data.items():
+            r_data[key] = self._clip_per_activity_data_windows(
+                value, data_episodes_kwargs[key + "_samples_min"]
             )
 
-            # Discard excess training data
-            perms = np.random.permutation(sample_min)
-            x_train_act = list(x_train_act[i] for i in perms)
-            y_train_act = list(y_train_act[i] for i in perms)
+        for key, value in l_data.items():
+            l_data[key] = self._clip_per_activity_data_windows(
+                value, data_episodes_kwargs[key + "_samples_min"]
+            )
 
-            # x_test_act = list(x_test_act[i] for i in perms)
-            # y_test_act = list(y_test_act[i] for i in perms)
+        # Combine into one data set
+        data = activity_samples = collections.defaultdict(lambda: ([], []))
 
-            x_train += x_train_act
-            y_train += y_train_act
-            x_test += x_test_act
-            y_test += y_test_act
+        for key, value in r_data.items():
+            for activity_value in value.values():
+                data[key][0].extend(activity_value[0])
+                data[key][1].extend(activity_value[1])
 
-        x_train = np.asarray(x_train)
-        y_train = np.asarray(y_train)
+        for key, value in l_data.items():
+            for activity_value in value.values():
+                data[key][0].extend(activity_value[0])
+                data[key][1].extend(activity_value[1])
 
-        x_test = np.asarray(x_test)
-        y_test = np.asarray(y_test)
+        # Convert to np.array
+        for key, value in data.items():
+            data[key] = (np.asarray(value[0]), value[1])
 
-        # Return test and training sets
-        return (x_train, y_train), (x_test, y_test)
+        return dict(data)
 
     def load_data(
         self,
@@ -405,7 +487,7 @@ class Data_Preload:
 
             if self.verbose:
                 print("Loaded file {}".format(str(file)))
-            new_x, new_y = self.parse_file(self.file_dict[file], **parse_settings)
+            new_x, new_y = self.parse_file(self.find_cache_data(file), **parse_settings)
 
             if append:
                 x.append(new_x)
@@ -429,17 +511,11 @@ class Data_Preload:
         freq = re.search(r"(?:Aug|Out)_(\d*)", file_name).group(1)
         freq = int(freq)
 
-        if freq_min <= freq <= freq_max:
-            return True
-
-        return False
+        return freq_min <= freq <= freq_max
 
     @staticmethod
     def is_augmented_data(file_name: str) -> bool:
-        if "Aug_" in file_name:
-            return True
-
-        return False
+        return "Aug_" in file_name
 
     @staticmethod
     def get_activity_type(file_name: str) -> tuple:
@@ -461,11 +537,7 @@ class Data_Preload:
 
     @staticmethod
     def check_validity(file_name: str, exclude_dirs) -> bool:
-        for exclude in exclude_dirs:
-            if exclude in file_name:
-                return False
-
-        return True
+        return all(exclude not in file_name for exclude in exclude_dirs)
 
     @staticmethod
     def get_file_list(data_directory: str, extension: str) -> list:
@@ -477,7 +549,7 @@ class Data_Preload:
             file = data_directory / file
 
             if os.path.isdir(file):
-                data_files.extend(Data_Preload.get_file_list(file, extension))
+                data_files.extend(Data_Files.get_file_list(file, extension))
 
             elif file.exists() and file.suffix == extension:
                 data_files.append(file)
@@ -564,15 +636,10 @@ def split_test_train(
 
     for i in range(unique_labels.shape[0]):
         # Limit to 50% difference
-        if max_difference is not None:
-            if label_count[i] > max_difference * min_labels:
-                label_count[i] = max_difference * min_labels
+        if max_difference is not None and label_count[i] > max_difference * min_labels:
+            label_count[i] = max_difference * min_labels
 
-        if split_is_samples:
-            train_test_split = split
-        else:
-            train_test_split = int(split * label_count[i])
-
+        train_test_split = split if split_is_samples else int(split * label_count[i])
         label_rows = np.where(labels == unique_labels[i])[0]
         perms = np.random.permutation(label_count[i])
 
@@ -669,6 +736,33 @@ def analyse_test_data(y_true, y_pred, num_classes) -> dict:
     return {**default_result_dict, **class_report}
 
 
+def gen_conf_matrix(data, labels, data_type: str):
+    actual_class = tf.math.argmax(labels, axis=-1)
+    predicted_class = tf.math.argmax(model.predict(data), axis=-1)
+
+    acc = sum(np.asarray(actual_class) == np.asarray(predicted_class)) / len(
+        actual_class
+    )
+    print(f"*** {data_type} Performance ***")
+
+    print(f"{data_type} values {tf.math.reduce_sum(labels.astype(np.int32), axis=0)}")
+    print(f"Accuracy: {acc:.3f}%")
+    conf_matrix = tf.math.confusion_matrix(
+        labels=actual_class,
+        predictions=predicted_class,
+        num_classes=conf["data"]["data_settings"]["num_labels"],
+    )
+    print(conf_matrix)
+
+    return actual_class, predicted_class
+
+
+def save_hparam_to_file(file, headers, values):
+    with open(pathlib.Path(file, mode="a+")) as file:
+        file.write(",".join(map(str, header)))
+        file.write(",".join(map(str, values)))
+
+
 if __name__ == "__main__":
     args = parse_cli()
 
@@ -686,15 +780,15 @@ if __name__ == "__main__":
     # Setup physical devices
     hardware_setup(**_conf["hardware_setup"])
 
-    data_files = Data_Preload(
+    data_files = Data_Files(
         data_folder=_conf["data"]["folder"],
-        load_augment=_conf["data"]["load_augment"],
         verbose=_conf["data"]["verbose"],
         shuffle=True,
+        preload=False,
     )
 
     # Hyper paramater training
-    start_ix_offset = 25
+    start_ix_offset = 0
     for ix, hparam_set in enumerate(hparams):
         if ix + 1 < start_ix_offset:
             continue
@@ -708,54 +802,44 @@ if __name__ == "__main__":
             model_conf = copy.deepcopy(_model_conf)
             model_conf = hparam_load.set_hparams(hparam_set, model_conf)
 
-            # Save copy of hyperparamaters
+            # Print out hyperparamaters
             print("\n------------------------")
-            print("Start: {}".format(start_time))
-            print("Sweep: {} of {}".format(ix + 1, len(hparams)))
-            print("Hyperparamaters: ", end="")
-            print(hparam_set)
+            print(f"Start: {start_time}")
+            print(f"Sweep: {ix + 1} of {len(hparams)}")
+            print(f"Hyperparamaters: {hparam_set}")
             print("------------------------\n")
 
             # Import and process data
             # Filter out participant for cross validation study
-            train_data, test_data = data_files.load_data_activities(
-                parse_settings=conf["data"]["data_settings"],
-                file_offset=conf["data"]["episode_offset"],
-                sample_min=conf["data"]["training_samples"],
-                filter_mode=False,  # Include participants in list
-                filter_list=conf["data"]["x_validation_exclude"],
-            )
+            try:
+                train_samples = int(
+                    conf["data"]["training_samples"] * conf["data"]["test_train_split"]
+                )
+                valid_samples = int(
+                    conf["data"]["training_samples"]
+                    * (1 - conf["data"]["test_train_split"])
+                )
+                data = data_files.load_data_activities(
+                    parse_kwargs=conf["data"]["data_settings"],
+                    file_offset=conf["data"]["episode_offset"],
+                    train_samples=train_samples,
+                    valid_samples=valid_samples,
+                    test_samples=conf["data"]["test_samples"],
+                    filter_mode=False,  # Only Include participants in list
+                    filter_list=conf["data"]["x_validation_exclude"],
+                )
+
+                train_data = data["train"]
+                validation_data = data["valid"]
+                test_data = data["test"]
+
+            except InsufficientData as exc:
+                print(exc)
+                continue
 
             print("Training Data Samples: {}".format(len(train_data[1])))
+            print("Validation Data Samples: {}".format(len(validation_data[1])))
             print("Test Data Samples: {}".format(len(test_data[1])))
-
-            validation_data, train_data = split_test_train(
-                train_data[0],
-                train_data[1],
-                split=conf["data"]["test_train_split"],
-                percent_train=conf["data"]["percentage_train"],
-                max_difference=conf["data"]["max_label_difference"],
-            )
-
-            # Balance Data Set - Limit maximum difference between test classes
-            _, test_data = split_test_train(
-                test_data[0],
-                test_data[1],
-                split=1.0,
-                percent_train=1.0,
-                max_difference=1.0,
-            )
-
-            # Check data distribution
-            train_unique_labels, train_label_count = np.unique(
-                train_data[1], return_counts=True
-            )
-            valid_unique_labels, valid_label_count = np.unique(
-                validation_data[1], return_counts=True
-            )
-            test_unique_labels, test_label_count = np.unique(
-                test_data[1], return_counts=True
-            )
 
             # Convert to one hot
             # Train Data
@@ -845,7 +929,7 @@ if __name__ == "__main__":
             # Print list of classes
             print(
                 "Using callbacks: {}".format(
-                    ", ".join([x.__class__.__name__ for x in callback_list])
+                    ", ".join(x.__class__.__name__ for x in callback_list)
                 )
             )
 
@@ -854,7 +938,9 @@ if __name__ == "__main__":
 
                 save_copy_config(save_folder, "config.yaml", conf)
                 save_copy_config(
-                    save_folder, "model.yaml", model_conf,
+                    save_folder,
+                    "model.yaml",
+                    model_conf,
                 )
 
             # ------------------------------------------------------------------------------
@@ -876,43 +962,13 @@ if __name__ == "__main__":
                     history_save_dir.__str__(), index=False
                 )
 
+            # ------------------------------------------------------------------------------
             # Print data summary
-            print(
-                "Train values {}".format(
-                    tf.math.reduce_sum(train_data[1].astype(np.int32), axis=0)
-                )
+            gen_conf_matrix(train_data[0], train_data[1], "train")
+            gen_conf_matrix(validation_data[0], validation_data[1], "validation")
+            actual_class, predicted_class = gen_conf_matrix(
+                test_data[0], test_data[1], "test"
             )
-            print(
-                "Val values {}".format(
-                    tf.math.reduce_sum(validation_data[1].astype(np.int32), axis=0)
-                )
-            )
-
-            # ------------------------------------------------------------------------------
-            # Validation - Confusion Matrix
-            actual_class = tf.math.argmax(validation_data[1], axis=-1)
-            predicted_class = tf.math.argmax(model.predict(validation_data[0]), axis=-1)
-
-            print("*** Validation Confusion Matrix ***")
-            conf_matrix = tf.math.confusion_matrix(
-                labels=actual_class,
-                predictions=predicted_class,
-                num_classes=conf["data"]["data_settings"]["num_labels"],
-            )
-            print(conf_matrix)
-
-            # ------------------------------------------------------------------------------
-            # Test - Confusion Matrix
-            actual_class = tf.math.argmax(test_data[1], axis=-1)
-            predicted_class = tf.math.argmax(model.predict(test_data[0]), axis=-1)
-
-            print("*** Test Confusion Matrix ***")
-            conf_matrix = tf.math.confusion_matrix(
-                labels=actual_class,
-                predictions=predicted_class,
-                num_classes=conf["data"]["data_settings"]["num_labels"],
-            )
-            print(conf_matrix)
 
             # ------------------------------------------------------------------------------
             # Save results
@@ -930,20 +986,16 @@ if __name__ == "__main__":
                     map(str, hparam_set["HP_VALIDATION_INCLUDE"])
                 )
 
-                header = ["Timestamp", "Sweep", "Sweep Total"]
-                header.extend(hparam_set.keys())
-
-                values = [start_time, ix + 1, len(hparams)]
-                values.extend(hparam_set.values())
-                with open(
-                    pathlib.Path(conf["hyper_paramaters"]["hparam_log_file"]), mode="a+"
-                ) as file:
-                    print(
-                        ",".join(map(str, header)), file=file,
-                    )
-                    print(
-                        ",".join(map(str, values)), file=file,
-                    )
+                header_values = [
+                    "Timestamp",
+                    "Sweep",
+                    "Sweep Total",
+                    *hparam_set.keys(),
+                ]
+                values = [start_time, ix + 1, len(hparams), *hparam_set.values()]
+                save_hparam_to_file(
+                    conf["hyper_paramaters"]["hparam_log_file"], header_values, values
+                )
 
                 # Results
                 header = [
@@ -952,8 +1004,8 @@ if __name__ == "__main__":
                     "epochs",
                     "train_accuracy",
                     "val_accuracy",
+                    *class_report.keys(),
                 ]
-                header.extend(class_report.keys())
 
                 values = [
                     start_time,
@@ -961,21 +1013,11 @@ if __name__ == "__main__":
                     history.epoch[-1] + 1,
                     history.history["categorical_accuracy"][-1],
                     history.history["val_categorical_accuracy"][-1],
+                    *class_report.values(),
                 ]
-                values.extend(class_report.values())
+                save_hparam_to_file(
+                    conf["hyper_paramaters"]["hparam_result_file"], header, values
+                )
 
-                with open(
-                    pathlib.Path(conf["hyper_paramaters"]["hparam_result_file"]),
-                    mode="a+",
-                ) as file:
-                    print(
-                        ",".join(map(str, header)), file=file,
-                    )
-                    print(
-                        ",".join(map(str, values)), file=file,
-                    )
-
-        # Catch any errors in code
         except KeyboardInterrupt:
             break
-
