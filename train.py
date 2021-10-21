@@ -79,12 +79,8 @@ def load_data_episodes(conf: dict, data_files: Data_Files):
     """
     # Import and process data
     # Filter out participant for cross validation study
-    train_samples = int(
-        conf["data"]["training_samples"] * conf["data"]["test_train_split"]
-    )
-    valid_samples = int(
-        conf["data"]["training_samples"] * (1 - conf["data"]["test_train_split"])
-    )
+    train_samples = int(conf["data"]["training_samples"] * conf["data"]["test_train_split"])
+    valid_samples = int(conf["data"]["training_samples"] * (1 - conf["data"]["test_train_split"]))
     data = data_files.load_data_activities(
         parse_kwargs=conf["data"]["data_settings"],
         file_offset=conf["data"]["episode_offset"],
@@ -105,6 +101,8 @@ def load_data_subjects(conf: dict, data_files: Data_Files):
         filter_mode=True,  # Exclude participants in list
         filter_list=conf["data"]["x_validation_exclude"],
     )
+
+    # TODO: This does not balancing labels?
 
     return prepare_data(conf, data)
 
@@ -157,9 +155,7 @@ def generate_model(input_shape):
 
     print("Input Shape: {}".format(input_shape))
 
-    model = create_model(
-        layer_definitions=model_conf["layers"], input_shape=input_shape
-    )
+    model = create_model(layer_definitions=model_conf["layers"], input_shape=input_shape)
 
     loss_func = loss_function(conf["loss_func"]["type"], conf["loss_func"]["settings"])
     model = compile_model(tf_model=model, loss_func=loss_func, settings=conf["compile"])
@@ -173,9 +169,7 @@ def train_model(model, conf, train_data, validation_data, start_time):
     callback_list = []
 
     if conf["callbacks"]["use_tensorboard"]:
-        tensorboard_dir = pathlib.Path(
-            conf["save"]["tensorboard_dir"] + "/" + start_time
-        )
+        tensorboard_dir = pathlib.Path(conf["save"]["tensorboard_dir"] + "/" + start_time)
         callback_list.append(
             tensorboard_callback(
                 settings=conf["callbacks"]["tensorboard"], save_dir=tensorboard_dir,
@@ -190,27 +184,17 @@ def train_model(model, conf, train_data, validation_data, start_time):
         )
 
     if conf["callbacks"]["use_early_stopping"]:
-        callback_list.append(
-            early_stopping_callback(settings=conf["callbacks"]["early_stopping"])
-        )
+        callback_list.append(early_stopping_callback(settings=conf["callbacks"]["early_stopping"]))
 
     if conf["callbacks"]["use_save_model"]:
-        model_save_dir = pathlib.Path(
-            conf["save"]["model_dir"] + "/" + start_time + "/"
-        )
+        model_save_dir = pathlib.Path(conf["save"]["model_dir"] + "/" + start_time + "/")
         callback_list.append(
-            save_model_callback(
-                settings=conf["callbacks"]["save_model"], save_path=model_save_dir,
-            )
+            save_model_callback(settings=conf["callbacks"]["save_model"], save_path=model_save_dir,)
         )
 
     # ------------------------------------------------------------------------------
     # Print list of classes
-    print(
-        "Using callbacks: {}".format(
-            ", ".join(x.__class__.__name__ for x in callback_list)
-        )
-    )
+    print("Using callbacks: {}".format(", ".join(x.__class__.__name__ for x in callback_list)))
 
     if conf["save"]["config"]:
         save_folder = conf["save"]["config_dir"] + start_time
@@ -232,36 +216,32 @@ def train_model(model, conf, train_data, validation_data, start_time):
         model.save(model_save_dir.__str__())
 
         # Save model history
-        history_save_dir = pathlib.Path(
-            conf["save"]["history_dir"] + "/" + start_time + ".csv"
-        )
-        pd.DataFrame.from_dict(history.history).to_csv(
-            history_save_dir.__str__(), index=False
-        )
+        history_save_dir = pathlib.Path(conf["save"]["history_dir"] + "/" + start_time + ".csv")
+        pd.DataFrame.from_dict(history.history).to_csv(history_save_dir.__str__(), index=False)
 
     return model, history
 
 
-def test_model(model, conf, train_data, validation_data, test_data, start_time):
+def test_and_save_model(model, conf, train_data, validation_data, test_data, start_time):
+    """
+    @param test_data: np.array
+        None if not test data
+    """
     # Print data summary
     print("*** Train Performance ***")
     gen_conf_matrix(
-        model,
-        train_data[0],
-        train_data[1],
-        conf["data"]["data_settings"]["num_labels"],
+        model, train_data[0], train_data[1], conf["data"]["data_settings"]["num_labels"],
     )
     print("*** Validation Performance ***")
-    gen_conf_matrix(
-        model,
-        validation_data[0],
-        validation_data[1],
-        conf["data"]["data_settings"]["num_labels"],
-    )
-    print("*** Test Performance ***")
     actual_class, predicted_class = gen_conf_matrix(
-        model, test_data[0], test_data[1], conf["data"]["data_settings"]["num_labels"],
+        model, validation_data[0], validation_data[1], conf["data"]["data_settings"]["num_labels"],
     )
+
+    if test_data is not None:
+        print("*** Test Performance ***")
+        actual_class, predicted_class = gen_conf_matrix(
+            model, test_data[0], test_data[1], conf["data"]["data_settings"]["num_labels"],
+        )
 
     # ------------------------------------------------------------------------------
     # Save results
@@ -275,9 +255,10 @@ def test_model(model, conf, train_data, validation_data, test_data, start_time):
 
         # Save results to log files
         # Make participant exclusion data CSV friendly
-        hparam_set["HP_VALIDATION_INCLUDE"] = "-".join(
-            map(str, hparam_set["HP_VALIDATION_INCLUDE"])
-        )
+        if hparam_set["HP_VALIDATION_EXCLUDE"] is not None:
+            hparam_set["HP_VALIDATION_EXCLUDE"] = "-".join(
+                map(str, hparam_set["HP_VALIDATION_EXCLUDE"])
+            )
 
         header = [
             "Timestamp",
@@ -350,26 +331,22 @@ if __name__ == "__main__":
 
         try:
             # Load data by sets of episodes
-            # train_data, validation_data, test_data = load_data_episodes(
-            #     conf, data_files
-            # )
+            train_data, validation_data, test_data = load_data_episodes(conf, data_files)
 
             # Load data excluing participants
-            train_data, validation_data, test_data = load_data_subjects(
-                conf, data_files
-            )
+            # train_data, validation_data, test_data = load_data_subjects(conf, data_files)
         except InsufficientData as exc:
             print(exc)
             continue
 
-        # model_dir = pathlib.Path("logs/model/20211007-144730")  # 16 - unit model
-        # model = load_model(model_dir)
+        # Load an exsisting model
+        model_dir = pathlib.Path("logs/model/20211021-164227")  # 16 - unit model
+        model = load_model(model_dir)
 
-        input_shape = train_data[0].shape[-2:]
-        model = generate_model(input_shape)
+        # Generate a new model
+        # input_shape = train_data[0].shape[-2:]
+        # model = generate_model(input_shape)
 
-        model, history = train_model(
-            model, conf, train_data, validation_data, start_time
-        )
+        model, history = train_model(model, conf, train_data, validation_data, start_time)
 
-        test_model(model, conf, train_data, validation_data, test_data, start_time)
+        test_and_save_model(model, conf, train_data, validation_data, test_data, start_time)

@@ -34,11 +34,11 @@ definitions:
 hparams:
   - <<: *const
     hparam: "HP_RUN_ID"
-    value: 1
+    value: 5
 
   - <<: *const
     hparam: "HP_DESCRIPTION"
-    value: "Amount of data and model size comparison"
+    value: "Produce a general model from large group of subjects"
 
   - <<: *const
     hparam: "HP_NUMBER_ACTIVITIES"
@@ -90,12 +90,15 @@ hparams:
   - <<: *const
     hparam: "HP_DATASET_FOLDER"
     value:
-      - "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/Data/Activities_Split/Participant_01"
+      # - "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Data/General_Pop"
+      - "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Data/Bespoke_Pop"
 
   - <<: *list
-    hparam: "HP_VALIDATION_INCLUDE"
+    hparam: "HP_VALIDATION_EXCLUDE"
     items:
+      # -
       - - "Participant_01"
+      - - "Participant_09"
 
   - <<: *list
     hparam: "HP_TEST_TRAIN_SPLIT"
@@ -115,7 +118,7 @@ hparams:
             # - 4
             # - 6
             # - 8
-            # - 16
+            - 16
             # - 32
             # - 64
 
@@ -137,11 +140,11 @@ hparams:
   - <<: *list
     hparam: "HP_EPISODE_OFFSET"
     items:
-      # - 0
+      - 0
       # - 2
       # - 4
       # - 6
-      - 8
+      # - 8
 
   - <<: *list
     hparam: "HP_TRAINING_SAMPLES"
@@ -153,6 +156,3 @@ hparams:
       # - 9000
       # - 12000
       - 15000
-      # - 20000
-      # - 25000
-      # - 30000

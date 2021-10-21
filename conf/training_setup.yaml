@@ -2,15 +2,16 @@ hyper_paramaters:
   save_hparam: true
   hparam_file: "conf/hparam.yaml"
 
-  hparam_log_file: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/hparam.log"
-  hparam_result_file: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/result.log"
+  hparam_log_file: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/hparam.log"
+  hparam_result_file: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/result.log"
 
 hardware_setup:
   use_gpu: true
-  random_seed: 13
+  random_seed: 0
 
 data:
-  folder: "C:/Users/Freddie/Documents/PhD/Data/Results/21_20210506_1331_Personalisation_Control/Data/Activities_Split"
+  # folder: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Data/General_Pop"
+  folder: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Data/Bespoke_Pop"
 
   test_train_split: "@HP_TEST_TRAIN_SPLIT"
   verbose: true
@@ -22,7 +23,7 @@ data:
   training_samples: "@HP_TRAINING_SAMPLES"
   test_samples: 5000
 
-  x_validation_exclude: "@HP_VALIDATION_INCLUDE"
+  x_validation_exclude: "@HP_VALIDATION_EXCLUDE"
 
   data_settings:
     num_timesteps: "@HP_TIMESTEPS"
