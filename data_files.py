@@ -1,10 +1,12 @@
-import random
 import collections
-import numpy as np
 import copy
-import re
-import pathlib
+import math
 import os
+import pathlib
+import random
+import re
+
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 
@@ -363,6 +365,8 @@ class Data_Files:
             {"train": np.array,
              "valid: np.array,
              "test: None}
+
+        TODO: Add in both left and right ankle
         """
         x = []
         y = []
@@ -372,11 +376,33 @@ class Data_Files:
         else:
             data_files = self.include_filter(filter_list)
 
+        r_parse_kwargs = copy.copy(parse_kwargs)
+        r_parse_kwargs["data_headings"] = [
+            i for i in parse_kwargs["data_headings"] if i.startswith("r")
+        ]
+
+        l_parse_kwargs = copy.copy(parse_kwargs)
+        l_parse_kwargs["data_headings"] = [
+            i for i in parse_kwargs["data_headings"] if i.startswith("l")
+        ]
+
         for file in data_files:
 
             if self.verbose:
                 print("Loaded file {}".format(str(file)))
-            new_x, new_y = self.parse_file(self.find_cache_data(file), **parse_kwargs)
+
+            # Load right ankle
+            new_x, new_y = self.parse_file(self.find_cache_data(file), **r_parse_kwargs)
+
+            if append:
+                x.append(new_x)
+                y.append(new_y)
+            else:
+                x.extend(new_x)
+                y.extend(new_y)
+
+            # Load left ankle
+            new_x, new_y = self.parse_file(self.find_cache_data(file), **l_parse_kwargs)
 
             if append:
                 x.append(new_x)
@@ -512,14 +538,22 @@ class Data_Files:
         # Do something to limit max difference between labels
         unique_labels, label_count = np.unique(labels, return_counts=True)
 
+        # TODO: add in the ability to limit the quantity of each label category
+
+        min_label_count = np.min(label_count)
+
+        if min_label_count == 0:
+            raise RuntimeError("Min count is zero")
+
         for i in range(unique_labels.shape[0]):
-            valid_entries = int(split * label_count[i])
+            valid_entries = math.floor(split * min_label_count)
+            # valid_entries = int(split * label_count[i])
             label_rows = np.where(labels == unique_labels[i])[0]
 
             perms = np.random.permutation(label_count[i])
 
             train_rows.extend(label_rows[perms[:valid_entries]])
-            valid_rows.extend(label_rows[perms[valid_entries:]])
+            valid_rows.extend(label_rows[perms[valid_entries:min_label_count]])
 
         print(label_count)
         train = (
