@@ -95,14 +95,13 @@ def load_data_episodes(conf: dict, data_files: Data_Files):
 
 
 def load_data_subjects(conf: dict, data_files: Data_Files):
+    # TODO: #1ht27r1 Add in leave one out cross validation
     data = data_files.load_data(
         parse_kwargs=conf["data"]["data_settings"],
         validation_split=conf["data"]["test_train_split"],
         filter_mode=True,  # Exclude participants in list
         filter_list=conf["data"]["x_validation_exclude"],
     )
-
-    # TODO: This does not balancing labels?
 
     return prepare_data(conf, data)
 
@@ -331,21 +330,24 @@ if __name__ == "__main__":
 
         try:
             # Load data by sets of episodes
-            train_data, validation_data, test_data = load_data_episodes(conf, data_files)
+            # train_data, validation_data, test_data = load_data_episodes(conf, data_files)
 
             # Load data excluing participants
-            # train_data, validation_data, test_data = load_data_subjects(conf, data_files)
+            train_data, validation_data, test_data = load_data_subjects(conf, data_files)
         except InsufficientData as exc:
             print(exc)
             continue
 
-        # Load an exsisting model
-        model_dir = pathlib.Path("logs/model/20211021-164227")  # 16 - unit model
-        model = load_model(model_dir)
+        # TODO: #1ht21uw automate the loading of pre-trainined models
+        # Load an existing model
+        # model_dir = pathlib.Path("logs/model/20211021-164227")  # 16 - unit model
+        # model = load_model(model_dir)
 
         # Generate a new model
-        # input_shape = train_data[0].shape[-2:]
-        # model = generate_model(input_shape)
+        input_shape = train_data[0].shape[-2:]
+        model = generate_model(input_shape)
+
+        # TODO: #1ht21uw pre-test model with training data
 
         model, history = train_model(model, conf, train_data, validation_data, start_time)
 

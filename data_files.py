@@ -365,8 +365,6 @@ class Data_Files:
             {"train": np.array,
              "valid: np.array,
              "test: None}
-
-        TODO: Add in both left and right ankle
         """
         x = []
         y = []
@@ -527,7 +525,7 @@ class Data_Files:
             Numpy array of data labels
 
         @param split: float
-            Percentage validation data
+            Percentage of data to use as training data
 
         @return: tuple
             (Training data, Validation data)
@@ -535,25 +533,25 @@ class Data_Files:
         train_rows = []
         valid_rows = []
 
-        # Do something to limit max difference between labels
+        # TODO: #1ht27da Do something to limit max difference between labels
         unique_labels, label_count = np.unique(labels, return_counts=True)
-
-        # TODO: add in the ability to limit the quantity of each label category
 
         min_label_count = np.min(label_count)
 
         if min_label_count == 0:
             raise RuntimeError("Min count is zero")
 
+        # TODO: #1ht2112 this is incorrect - it should select the same size random set for each label. Selected from all possible labels
         for i in range(unique_labels.shape[0]):
-            valid_entries = math.floor(split * min_label_count)
-            # valid_entries = int(split * label_count[i])
             label_rows = np.where(labels == unique_labels[i])[0]
-
             perms = np.random.permutation(label_count[i])
 
-            train_rows.extend(label_rows[perms[:valid_entries]])
-            valid_rows.extend(label_rows[perms[valid_entries:min_label_count]])
+            # Limit to the minimum label count
+            perms = perms[:min_label_count]
+            train_valid_split = math.floor(split * min_label_count)
+
+            train_rows.extend(label_rows[perms[:train_valid_split]])
+            valid_rows.extend(label_rows[perms[train_valid_split:]])
 
         print(label_count)
         train = (
@@ -564,6 +562,9 @@ class Data_Files:
             data.take(valid_rows, axis=0),
             labels.take(valid_rows, axis=0),
         )
+
+        print(f"Train Labels: {np.unique(train[1], return_counts=True)}")
+        print(f"Validation Labels: {np.unique(valid[1], return_counts=True)}")
 
         return (
             train,
