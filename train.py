@@ -221,7 +221,7 @@ def train_model(model, conf, train_data, validation_data, start_time):
     return model, history
 
 
-def test_and_save_model(model, conf, train_data, validation_data, test_data, start_time):
+def test_model(model, conf, train_data, validation_data, test_data):
     """
     @param test_data: np.array
         None if not test data
@@ -242,8 +242,16 @@ def test_and_save_model(model, conf, train_data, validation_data, test_data, sta
             model, test_data[0], test_data[1], conf["data"]["data_settings"]["num_labels"],
         )
 
-    # ------------------------------------------------------------------------------
-    # Save results
+    return actual_class, predicted_class
+
+
+def save_results(conf, hparam_set, history, pre_test, actual_class, predicted_class, start_time):
+    """
+    @param pre_test: bool
+        True to indicate testing was performed before training. False otherwise
+    """
+    # TODO: #1ht3uvj - save confusion matricies
+
     if conf["hyper_paramaters"]["save_hparam"]:
         # Analyse performance
         class_report = analyse_test_data(
@@ -263,9 +271,10 @@ def test_and_save_model(model, conf, train_data, validation_data, test_data, sta
             "Timestamp",
             "Sweep",
             "Sweep Total",
+            "Pre Test",
             *hparam_set.keys(),
         ]
-        values = [start_time, ix + 1, len(hparams), *hparam_set.values()]
+        values = [start_time, ix + 1, len(hparams), pre_test, *hparam_set.values()]
         save_list_to_file(conf["hyper_paramaters"]["hparam_log_file"], header)
         save_list_to_file(conf["hyper_paramaters"]["hparam_log_file"], values)
 
@@ -279,12 +288,21 @@ def test_and_save_model(model, conf, train_data, validation_data, test_data, sta
             *class_report.keys(),
         ]
 
+        if history is None:
+            epochs = 0
+            cat_acc = 0
+            val_acc = 0
+        else:
+            epochs = (history.epoch[-1] + 1,)
+            cat_acc = history.history["categorical_accuracy"][-1]
+            val_acc = history.history["val_categorical_accuracy"][-1]
+
         values = [
             start_time,
             model.count_params(),
-            history.epoch[-1] + 1,
-            history.history["categorical_accuracy"][-1],
-            history.history["val_categorical_accuracy"][-1],
+            epochs,
+            cat_acc,
+            val_acc,
             *class_report.values(),
         ]
         save_list_to_file(conf["hyper_paramaters"]["hparam_result_file"], header)
@@ -333,7 +351,7 @@ if __name__ == "__main__":
             # train_data, validation_data, test_data = load_data_episodes(conf, data_files)
 
             # Load data excluing participants
-            train_data, validation_data, test_data = load_data_subjects(conf, data_files)
+            train_d, validation_d, test_d = load_data_subjects(conf, data_files)
         except InsufficientData as exc:
             print(exc)
             continue
@@ -344,11 +362,20 @@ if __name__ == "__main__":
         # model = load_model(model_dir)
 
         # Generate a new model
-        input_shape = train_data[0].shape[-2:]
+        input_shape = train_d[0].shape[-2:]
         model = generate_model(input_shape)
 
-        # TODO: #1ht21uw pre-test model with training data
+        # TODO: #1ht21uw pre-test model with training data and save result
+        print("***Pre training testing***")
+        # This is accuracy for test data
+        actual_class, predicted_class = test_model(model, conf, train_d, validation_d, test_d)
+        save_results(conf, hparam_set, None, True, actual_class, predicted_class, start_time)
 
-        model, history = train_model(model, conf, train_data, validation_data, start_time)
+        # Train model
+        model, history = train_model(model, conf, train_d, validation_d, start_time)
 
-        test_and_save_model(model, conf, train_data, validation_data, test_data, start_time)
+        # Post training testing
+        print("***Post training testing***")
+        # This is accuracy for test data
+        actual_class, predicted_class = test_model(model, conf, train_d, validation_d, test_d)
+        save_results(conf, hparam_set, history, False, actual_class, predicted_class, start_time)
