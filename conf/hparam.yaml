@@ -34,11 +34,11 @@ definitions:
 hparams:
   - <<: *const
     hparam: "HP_RUN_ID"
-    value: 5
+    value: 2
 
   - <<: *const
     hparam: "HP_DESCRIPTION"
-    value: "Produce a general model from large group of subjects"
+    value: "First attempt at personalisation of a general mode - target data post training"
 
   - <<: *const
     hparam: "HP_NUMBER_ACTIVITIES"
@@ -83,9 +83,13 @@ hparams:
 
   - <<: *const
     hparam: "HP_CLASSIFIER_TYPE"
-    # value: "relu"
+    value: "relu"
     # value: "leaky_relu"
-    value: "softmax"
+    # value: "softmax"
+
+  - <<: *const
+    hparam: "HP_LEARNING_RATE"
+    value: 0.001
 
   - <<: *const
     hparam: "HP_DATASET_FOLDER"
@@ -96,9 +100,12 @@ hparams:
   - <<: *list
     hparam: "HP_VALIDATION_EXCLUDE"
     items:
-      # -
+      # - - "Participant_01"
+      #   - "Participant_09"
+      #   - "Participant_03"
       - - "Participant_01"
       - - "Participant_09"
+      - - "Participant_03"
 
   - <<: *list
     hparam: "HP_TEST_TRAIN_SPLIT"
@@ -118,8 +125,8 @@ hparams:
             # - 4
             # - 6
             # - 8
-            - 16
-            # - 32
+            # - 16
+            - 32
             # - 64
 
         - <<: *list
@@ -142,17 +149,31 @@ hparams:
     items:
       - 0
       # - 2
-      # - 4
+      - 4
       # - 6
-      # - 8
+      - 8
+      # - 10
+      - 12
+      # - 14
+      - 16
+      # - 18
 
   - <<: *list
     hparam: "HP_TRAINING_SAMPLES"
     items:
-      # - 1000
-      # - 1500
-      # - 3000
-      # - 6000
-      # - 9000
-      # - 12000
+      - 1000
+      - 1500
+      - 3000
+      - 6000
+      - 9000
+      - 12000
       - 15000
+
+  - <<: *list
+    hparam: "HP_MODEL_NAME"
+    items:
+      - "20211210-113335"
+      - "20211210-113706"
+      - "20211210-114205"
+      - "20211210-114626"
+      - "20211210-115150"

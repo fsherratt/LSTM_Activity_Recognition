@@ -9,6 +9,10 @@ hardware_setup:
   use_gpu: true
   random_seed: 0
 
+base_model:
+  folder: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Models/128x32-gen-base-model/model"
+  model_name: "@HP_MODEL_NAME"
+
 data:
   # folder: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Data/General_Pop"
   folder: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Data/Bespoke_Pop"
@@ -38,9 +42,6 @@ data:
       - "r_ankle_gyro_x"
       - "r_ankle_gyro_y"
       - "r_ankle_gyro_z"
-      # - "r_ankle_magn_x"
-      # - "r_ankle_magn_y"
-      # - "r_ankle_magnz"
       - "l_ankle_accel_x" # = r
       - "l_ankle_accel_y" # = -r
       - "l_ankle_accel_z" # = r
@@ -55,7 +56,7 @@ data:
       3: 3 # Stair Ascent
       4: 4 # Stair Descent
       5: 5 # Stop
-      # # 6: 4 # Transition
+
 model:
   config_file: "conf/model.yaml"
 
@@ -68,6 +69,8 @@ compile:
   optimizer: "adam"
   metrics:
     - "categorical_accuracy"
+
+learning_rate: "@HP_LEARNING_RATE"
 
 callbacks:
   use_tensorboard: true
@@ -89,12 +92,14 @@ callbacks:
     save_weights_only: true
     period: 5
 
+  use_learning_rate_scheduler: false
+
 fit:
-  batch_size: 500
+  batch_size: 100
   epochs: 1000
   shuffle: true
-  # steps_per_epoch: 5 # 50 windows per epoch
-  # verbose: 2
+  steps_per_epoch: 21 # Train with x * batch_size per epoch
+  verbose: 2
 
 save:
   config: true

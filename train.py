@@ -6,6 +6,7 @@ import copy
 import datetime
 import os
 import pathlib
+import random
 
 import numpy as np
 import pandas as pd
@@ -162,6 +163,13 @@ def generate_model(input_shape):
     return model
 
 
+def scheduler(epoch, lr):
+    if epoch < 10:
+        return lr
+    else:
+        return lr * tf.math.exp(-0.1)
+
+
 def train_model(model, conf, train_data, validation_data, start_time):
     # ------------------------------------------------------------------------------
     # Setup callbacks
@@ -190,6 +198,9 @@ def train_model(model, conf, train_data, validation_data, start_time):
         callback_list.append(
             save_model_callback(settings=conf["callbacks"]["save_model"], save_path=model_save_dir,)
         )
+
+    if conf["callbacks"]["use_learning_rate_scheduler"]:
+        callback_list.append(tf.keras.callbacks.LearningRateScheduler(scheduler, verbose=1))
 
     # ------------------------------------------------------------------------------
     # Print list of classes
@@ -293,7 +304,7 @@ def save_results(conf, hparam_set, history, pre_test, actual_class, predicted_cl
             cat_acc = 0
             val_acc = 0
         else:
-            epochs = (history.epoch[-1] + 1,)
+            epochs = history.epoch[-1] + 1
             cat_acc = history.history["categorical_accuracy"][-1]
             val_acc = history.history["val_categorical_accuracy"][-1]
 
@@ -328,14 +339,19 @@ if __name__ == "__main__":
     )
 
     # Hyper paramater training
+    stop_ix = None
     start_ix_offset = 0
+
     for ix, hparam_set in enumerate(hparams):
         if ix + 1 < start_ix_offset:
             continue
 
+        if stop_ix is not None and ix >= stop_ix:
+            exit(1)
+
         start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        # Update config with next hyperparamater set
+        # Update config with next hperparamater set
         conf = hparam_load.set_hparams(hparam_set, copy.deepcopy(_conf))
         model_conf = hparam_load.set_hparams(hparam_set, copy.deepcopy(_model_conf))
 
@@ -348,34 +364,41 @@ if __name__ == "__main__":
 
         try:
             # Load data by sets of episodes
-            # train_data, validation_data, test_data = load_data_episodes(conf, data_files)
+            train_data, validation_data, test_data = load_data_episodes(conf, data_files)
 
             # Load data excluing participants
-            train_d, validation_d, test_d = load_data_subjects(conf, data_files)
+            # train_data, validation_data, test_data = load_data_subjects(conf, data_files)
         except InsufficientData as exc:
             print(exc)
             continue
 
-        # TODO: #1ht21uw automate the loading of pre-trainined models
         # Load an existing model
-        # model_dir = pathlib.Path("logs/model/20211021-164227")  # 16 - unit model
-        # model = load_model(model_dir)
+        model_dir = (
+            pathlib.Path(conf["base_model"]["folder"]) / conf["base_model"]["model_name"]
+        )  # 32 - unit model
+        model = load_model(model_dir)
 
         # Generate a new model
-        input_shape = train_d[0].shape[-2:]
-        model = generate_model(input_shape)
+        # input_shape = train_data[0].shape[-2:]
+        # model = generate_model(input_shape)
 
-        # TODO: #1ht21uw pre-test model with training data and save result
-        print("***Pre training testing***")
+        # Set the starting learning rate
+        tf.keras.backend.set_value(model.optimizer.learning_rate, conf["learning_rate"])
+
         # This is accuracy for test data
-        actual_class, predicted_class = test_model(model, conf, train_d, validation_d, test_d)
+        print("***Pre training testing***")
+        actual_class, predicted_class = test_model(
+            model, conf, train_data, validation_data, test_data
+        )
         save_results(conf, hparam_set, None, True, actual_class, predicted_class, start_time)
 
         # Train model
-        model, history = train_model(model, conf, train_d, validation_d, start_time)
+        model, history = train_model(model, conf, train_data, validation_data, start_time)
 
         # Post training testing
         print("***Post training testing***")
         # This is accuracy for test data
-        actual_class, predicted_class = test_model(model, conf, train_d, validation_d, test_d)
+        actual_class, predicted_class = test_model(
+            model, conf, train_data, validation_data, test_data
+        )
         save_results(conf, hparam_set, history, False, actual_class, predicted_class, start_time)

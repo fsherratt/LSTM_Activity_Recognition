@@ -37,6 +37,7 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
         "conv2d": tf.keras.layers.Conv2D,
         "maxpool1D": tf.keras.layers.MaxPooling1D,
         "avgpool1D": tf.keras.layers.AvgPool1D,
+        "batch_normalisation": tf.keras.layers.BatchNormalization,
     }
 
     activation_dict = {
@@ -61,9 +62,7 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
                 layer["args"] = {}
 
             if layer["type"] == "activation":
-                layer["args"]["activation"] = activation_dict[
-                    layer["args"]["activation"]
-                ]
+                layer["args"]["activation"] = activation_dict[layer["args"]["activation"]]
 
             tf_model.add(layer_dict[layer["type"]](**layer["args"]))
 
@@ -198,9 +197,7 @@ def gen_conf_matrix(model, data, labels, num_labels=None):
     actual_class = tf.math.argmax(labels, axis=-1)
     predicted_class = tf.math.argmax(model.predict(data), axis=-1)
 
-    acc = sum(np.asarray(actual_class) == np.asarray(predicted_class)) / len(
-        actual_class
-    )
+    acc = sum(np.asarray(actual_class) == np.asarray(predicted_class)) / len(actual_class)
 
     print(f"Values {tf.math.reduce_sum(labels.astype(np.int32), axis=0)}")
     print(f"Accuracy: {acc:.3f}%")
