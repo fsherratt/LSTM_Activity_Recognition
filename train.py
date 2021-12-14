@@ -6,7 +6,7 @@ import copy
 import datetime
 import os
 import pathlib
-import random
+
 
 import numpy as np
 import pandas as pd
@@ -151,7 +151,7 @@ def load_model(model_dir):
     return tf.keras.models.load_model(model_dir)
 
 
-def generate_model(input_shape):
+def generate_model(conf: dict, model_conf: dict, input_shape):
 
     print("Input Shape: {}".format(input_shape))
 
@@ -331,6 +331,13 @@ if __name__ == "__main__":
     # Setup physical devices
     hardware_setup(**_conf["hardware_setup"])
 
+    data_files_general = Data_Files(
+        data_folder=_conf["data"]["folder_gen"],
+        verbose=_conf["data"]["verbose"],
+        shuffle=True,
+        preload=False,
+    )
+
     data_files = Data_Files(
         data_folder=_conf["data"]["folder"],
         verbose=_conf["data"]["verbose"],
@@ -364,33 +371,49 @@ if __name__ == "__main__":
 
         try:
             # Load data by sets of episodes
-            train_data, validation_data, test_data = load_data_episodes(conf, data_files)
+            train_data_target, valid_data_target, test_data_target = load_data_episodes(
+                conf, data_files
+            )
 
             # Load data excluing participants
-            # train_data, validation_data, test_data = load_data_subjects(conf, data_files)
+            train_data_gen, validation_data_gen, _ = load_data_subjects(conf, data_files_general)
+
+            # Combine data sets
+            train_data = (
+                np.concatenate((train_data_gen[0], train_data_target[0])),
+                np.concatenate((train_data_gen[1], train_data_target[1])),
+            )
+            validation_data = (
+                np.concatenate((validation_data_gen[0], valid_data_target[0])),
+                np.concatenate((validation_data_gen[1], valid_data_target[1])),
+            )
+            test_data = test_data_target
+
         except InsufficientData as exc:
             print(exc)
             continue
 
         # Load an existing model
-        model_dir = (
-            pathlib.Path(conf["base_model"]["folder"]) / conf["base_model"]["model_name"]
-        )  # 32 - unit model
-        model = load_model(model_dir)
+        # model_dir = (
+        #     pathlib.Path(conf["base_model"]["folder"]) / conf["base_model"]["model_name"]
+        # )  # 32 - unit model
+        # model = load_model(model_dir)
 
         # Generate a new model
-        # input_shape = train_data[0].shape[-2:]
-        # model = generate_model(input_shape)
+        input_shape = train_data[0].shape[-2:]
+        model = generate_model(conf, model_conf, input_shape)
 
         # Set the starting learning rate
         tf.keras.backend.set_value(model.optimizer.learning_rate, conf["learning_rate"])
 
         # This is accuracy for test data
-        print("***Pre training testing***")
-        actual_class, predicted_class = test_model(
-            model, conf, train_data, validation_data, test_data
-        )
-        save_results(conf, hparam_set, None, True, actual_class, predicted_class, start_time)
+        test_pre_train = False
+        if test_pre_train:
+            print("***Pre training testing***")
+            actual_class, predicted_class = test_model(
+                model, conf, train_data_target, valid_data_target, test_data_target
+            )
+            save_results(conf, hparam_set, None, True, actual_class, predicted_class, start_time)
 
         # Train model
         model, history = train_model(model, conf, train_data, validation_data, start_time)

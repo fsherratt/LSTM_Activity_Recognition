@@ -14,7 +14,7 @@ base_model:
   model_name: "@HP_MODEL_NAME"
 
 data:
-  # folder: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Data/General_Pop"
+  folder_gen: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Data/General_Pop"
   folder: "C:/Users/Freddie/Documents/PhD/Data/Results/22_20211021_1452_pre-trained-model-personalisation/Data/Bespoke_Pop"
 
   test_train_split: "@HP_TEST_TRAIN_SPLIT"

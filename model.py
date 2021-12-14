@@ -5,6 +5,29 @@ from sklearn import metrics as skmetrics
 from sklearn.utils import class_weight
 from tensorflow import keras
 
+# Add in layer type definitions here
+layer_dict = {
+    "lstm": tf.keras.layers.LSTM,
+    "lstm_peephole": tf.keras.experimental.PeepholeLSTMCell,
+    "bidirectional": tf.keras.layers.Bidirectional,
+    "dense": tf.keras.layers.Dense,
+    "activation": tf.keras.layers.Activation,
+    "dropout": tf.keras.layers.Dropout,
+    "flatten": tf.keras.layers.Flatten,
+    "conv1d": tf.keras.layers.Conv1D,
+    "conv2d": tf.keras.layers.Conv2D,
+    "maxpool1D": tf.keras.layers.MaxPooling1D,
+    "avgpool1D": tf.keras.layers.AvgPool1D,
+    "batch_normalisation": tf.keras.layers.BatchNormalization,
+    "input": tf.keras.Input,  # shape=(3,)
+}
+
+activation_dict = {
+    "relu": tf.nn.relu,
+    "leaky_relu": tf.nn.leaky_relu,
+    "softmax": tf.nn.softmax,
+}
+
 
 class EarlyStoppingCallback(keras.callbacks.Callback):
     def __init__(self, stop_threshold: float, **kwargs):
@@ -24,28 +47,6 @@ class EarlyStoppingCallback(keras.callbacks.Callback):
 
 
 def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequential:
-    # Add in layer type definitions here
-    layer_dict = {
-        "lstm": tf.keras.layers.LSTM,
-        "lstm_peephole": tf.keras.experimental.PeepholeLSTMCell,
-        "bidirectional": tf.keras.layers.Bidirectional,
-        "dense": tf.keras.layers.Dense,
-        "activation": tf.keras.layers.Activation,
-        "dropout": tf.keras.layers.Dropout,
-        "flatten": tf.keras.layers.Flatten,
-        "conv1d": tf.keras.layers.Conv1D,
-        "conv2d": tf.keras.layers.Conv2D,
-        "maxpool1D": tf.keras.layers.MaxPooling1D,
-        "avgpool1D": tf.keras.layers.AvgPool1D,
-        "batch_normalisation": tf.keras.layers.BatchNormalization,
-    }
-
-    activation_dict = {
-        "relu": tf.nn.relu,
-        "leaky_relu": tf.nn.leaky_relu,
-        "softmax": tf.nn.softmax,
-    }
-
     # Add input definition to first layer
     layer_definitions[0]["args"]["input_shape"] = input_shape
 
