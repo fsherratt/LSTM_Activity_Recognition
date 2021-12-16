@@ -147,10 +147,6 @@ def prepare_data(conf: dict, data: dict):
     return train_data, validation_data, test_data
 
 
-def load_model(model_dir):
-    return tf.keras.models.load_model(model_dir)
-
-
 def generate_model(conf: dict, model_conf: dict, input_shape):
 
     print("Input Shape: {}".format(input_shape))
@@ -320,6 +316,22 @@ def save_results(conf, hparam_set, history, pre_test, actual_class, predicted_cl
         save_list_to_file(conf["hyper_paramaters"]["hparam_result_file"], values)
 
 
+_model_cache = {}
+
+
+def load_model(model_dir):
+    """
+    Cache ML models
+    """
+    if model_dir not in _model_cache:
+        print("Loading model from disk")
+        model = tf.keras.models.load_model(model_dir)
+        _model_cache[model_dir] = model
+
+    print("Model cached... Cloning")
+    return tf.keras.models.clone_model(_model_cache[model_dir])
+
+
 if __name__ == "__main__":
     args = parse_cli()
 
@@ -347,7 +359,7 @@ if __name__ == "__main__":
 
     # Hyper paramater training
     stop_ix = None
-    start_ix_offset = 0
+    start_ix_offset = 90
 
     for ix, hparam_set in enumerate(hparams):
         if ix + 1 < start_ix_offset:
@@ -369,6 +381,11 @@ if __name__ == "__main__":
         print(f"Hyperparamaters: {hparam_set}")
         print("------------------------\n")
 
+        # Ignore models that only have 1 LSTM layer - delete this as it would still allow the dense network to be retrained
+        # if not model_conf["layers"][0]["enabled"] and not model_conf["layers"][2]["enabled"]:
+        #     print("Model does not contain layers for transfer learning. Skipping")
+        #     continue
+
         try:
             # Load data by sets of episodes
             train_data_target, valid_data_target, test_data_target = load_data_episodes(
@@ -376,32 +393,42 @@ if __name__ == "__main__":
             )
 
             # Load data excluing participants
-            train_data_gen, validation_data_gen, _ = load_data_subjects(conf, data_files_general)
+            # train_data_gen, validation_data_gen, _ = load_data_subjects(conf, data_files_general)
 
-            # Combine data sets
-            train_data = (
-                np.concatenate((train_data_gen[0], train_data_target[0])),
-                np.concatenate((train_data_gen[1], train_data_target[1])),
-            )
-            validation_data = (
-                np.concatenate((validation_data_gen[0], valid_data_target[0])),
-                np.concatenate((validation_data_gen[1], valid_data_target[1])),
-            )
+            # # Combine data sets
+            # train_data = (
+            #     np.concatenate((train_data_gen[0], train_data_target[0])),
+            #     np.concatenate((train_data_gen[1], train_data_target[1])),
+            # )
+            # validation_data = (
+            #     np.concatenate((validation_data_gen[0], valid_data_target[0])),
+            #     np.concatenate((validation_data_gen[1], valid_data_target[1])),
+            # )
+            train_data = train_data_target
+            validation_data = valid_data_target
             test_data = test_data_target
 
         except InsufficientData as exc:
             print(exc)
             continue
 
-        # Load an existing model
-        # model_dir = (
-        #     pathlib.Path(conf["base_model"]["folder"]) / conf["base_model"]["model_name"]
-        # )  # 32 - unit model
-        # model = load_model(model_dir)
-
         # Generate a new model
         input_shape = train_data[0].shape[-2:]
         model = generate_model(conf, model_conf, input_shape)
+
+        # TRANSFER LEARNING
+        # Load an existing model
+        model_dir = (
+            pathlib.Path(conf["base_model"]["folder"]) / conf["base_model"]["model_name"]
+        )  # 32 - unit model
+        inner_model = load_model(model_dir)
+
+        transfer_layer = 0  # if model_conf["layers"][0]["enabled"] else 0
+        print(f"Transfer layer {transfer_layer}")
+
+        model.layers[transfer_layer].set_weights(weights=inner_model.layers[0].get_weights())
+        model.layers[transfer_layer].trainable = False
+        model.summary()
 
         # Set the starting learning rate
         tf.keras.backend.set_value(model.optimizer.learning_rate, conf["learning_rate"])

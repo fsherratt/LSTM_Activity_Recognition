@@ -34,11 +34,11 @@ definitions:
 hparams:
   - <<: *const
     hparam: "HP_RUN_ID"
-    value: 2
+    value: 8
 
   - <<: *const
     hparam: "HP_DESCRIPTION"
-    value: "First attempt at personalisation of a general mode - target data post training"
+    value: "Transfer learning - Retraining the dense layer"
 
   - <<: *const
     hparam: "HP_NUMBER_ACTIVITIES"
@@ -122,6 +122,7 @@ hparams:
       - - <<: *list
           hparam: "HP_LAYER_1_UNITS"
           items:
+            # - 0
             # - 4
             # - 6
             # - 8
@@ -162,16 +163,17 @@ hparams:
     hparam: "HP_TRAINING_SAMPLES"
     items:
       - 1000
-      - 1500
+      # - 1500
       - 3000
-      - 6000
+      # - 6000
       - 9000
-      - 12000
+      # - 12000
       - 15000
 
   - <<: *list
     hparam: "HP_MODEL_NAME"
     items:
+      # - ""
       - "20211210-113335"
       - "20211210-113706"
       - "20211210-114205"

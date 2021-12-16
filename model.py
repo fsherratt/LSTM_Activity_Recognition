@@ -67,6 +67,7 @@ def create_model(layer_definitions: list, input_shape: list) -> tf.keras.Sequent
 
             tf_model.add(layer_dict[layer["type"]](**layer["args"]))
 
+    tf_model.build(input_shape=(None, input_shape[0], input_shape[1]))
     return tf_model
 
 
