@@ -34,11 +34,11 @@ definitions:
 hparams:
   - <<: *const
     hparam: "HP_RUN_ID"
-    value: 8
+    value: 9
 
   - <<: *const
     hparam: "HP_DESCRIPTION"
-    value: "Transfer learning - Retraining the dense layer"
+    value: "Transfer learning - Retrain LSTM layer - pre-trained dense layer"
 
   - <<: *const
     hparam: "HP_NUMBER_ACTIVITIES"

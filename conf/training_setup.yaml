@@ -102,8 +102,8 @@ fit:
   verbose: 2
 
 save:
-  config: true
-  final_model: true
+  config: false
+  final_model: false
 
   config_dir: "logs/conf/"
   tensorboard_dir: "logs/scalars/"

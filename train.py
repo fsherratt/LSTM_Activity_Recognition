@@ -11,6 +11,7 @@ import pathlib
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from tensorflow.python.ops.gen_math_ops import Sigmoid
 import yaml
 
 import hparam_load
@@ -359,7 +360,7 @@ if __name__ == "__main__":
 
     # Hyper paramater training
     stop_ix = None
-    start_ix_offset = 90
+    start_ix_offset = 84
 
     for ix, hparam_set in enumerate(hparams):
         if ix + 1 < start_ix_offset:
@@ -411,7 +412,6 @@ if __name__ == "__main__":
         except InsufficientData as exc:
             print(exc)
             continue
-
         # Generate a new model
         input_shape = train_data[0].shape[-2:]
         model = generate_model(conf, model_conf, input_shape)
@@ -422,12 +422,25 @@ if __name__ == "__main__":
             pathlib.Path(conf["base_model"]["folder"]) / conf["base_model"]["model_name"]
         )  # 32 - unit model
         inner_model = load_model(model_dir)
+        # Only retrain LSTM layer
 
-        transfer_layer = 0  # if model_conf["layers"][0]["enabled"] else 0
-        print(f"Transfer layer {transfer_layer}")
+        # Wrap pre-trained model with a new Dense input layer
+        # model = tf.keras.Sequential()
+        # model.add(tf.keras.Input(shape=input_shape))
+        # model.add(tf.keras.layers.LSTM(units=6, return_sequences=True))
+        # model.add(inner_model)
+        # model.build(input_shape=(None, input_shape[0], input_shape[1]))
+        # model.summary()
 
-        model.layers[transfer_layer].set_weights(weights=inner_model.layers[0].get_weights())
-        model.layers[transfer_layer].trainable = False
+        # loss_func = loss_function(conf["loss_func"]["type"], conf["loss_func"]["settings"])
+        # model = compile_model(tf_model=model, loss_func=loss_func, settings=conf["compile"])
+
+        # transfer_layer = 0  # if model_conf["layers"][0]["enabled"] else 0
+        # print(f"Transfer layer {transfer_layer}")
+
+        # Copy across dense weights
+        model.layers[3].set_weights(weights=inner_model.layers[3].get_weights())
+        model.layers[3].trainable = False
         model.summary()
 
         # Set the starting learning rate
@@ -452,3 +465,7 @@ if __name__ == "__main__":
             model, conf, train_data, validation_data, test_data
         )
         save_results(conf, hparam_set, history, False, actual_class, predicted_class, start_time)
+        
+        print("Cleaning up")
+        tf.keras.backend.clear_session()
+
